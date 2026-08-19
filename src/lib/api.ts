@@ -53,14 +53,35 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    // Only attach Content-Type: application/json when there's an actual
+    // body to describe. A bodyless GET/DELETE that still carries this
+    // header can end up with an empty-string body once it passes through
+    // some proxy layers (e.g. Vite's dev proxy, which can add
+    // `Content-Length: 0`) — Fastify's default JSON body parser treats
+    // Content-Type: application/json + a zero-length body as an error
+    // (`FST_ERR_CTP_EMPTY_JSON_BODY`, a real 400 "Bad Request" this app
+    // hit in practice on every GET, since app.inject()-based tests don't
+    // go through a real HTTP proxy and never exercised this path).
+    // Omitting the header on bodyless requests avoids the ambiguity
+    // entirely, regardless of which layer would have added the
+    // zero-length Content-Length.
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
 
   if (!response.ok) {
     let message = `Request to ${path} failed with status ${response.status}`;
     try {
       const body = await response.json();
-      if (body?.error) message = body.error;
+      // Prefer `message` (the specific detail) over `error` — Fastify's
+      // own framework-level errors (as opposed to this app's own routes)
+      // put a generic HTTP reason phrase like "Bad Request" in `error`
+      // and the actually useful text in `message`; this app's own routes
+      // only ever set `error`, so falling back to it keeps those intact.
+      if (body?.message) message = body.message;
+      else if (body?.error) message = body.error;
     } catch {
       // response body wasn't JSON — keep the generic message
     }
