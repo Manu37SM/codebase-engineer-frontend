@@ -1,3 +1,72 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Site-wide dark-mode fallback.
+ *
+ * `tailwind.config.js` uses `darkMode: "class"`, toggled on <html> by
+ * `ThemeContext`. Newer/updated pages (e.g. the Changes page) use explicit
+ * `dark:` utility variants for a hand-tuned look. Every other page in this
+ * app consistently reuses the same small palette of slate/white utilities
+ * (bg-white, bg-slate-50/100, text-slate-900/700/600/500/400,
+ * border-slate-200/300) — rather than touching every one of those call
+ * sites individually, these `.dark` overrides recolor that shared palette
+ * globally, so toggling the theme never leaves an unstyled or
+ * still-light page anywhere in the app. Anything given explicit `dark:`
+ * classes directly takes precedence via normal CSS specificity/order.
+ */
+/*
+ * Plain `color`/`background-color`/`border-color` declarations (reading
+ * raw values via `theme()`) rather than `@apply` — several of these
+ * mappings reuse a slate shade that is *also* one of the selectors being
+ * overridden in this same block (e.g. text-slate-500 -> a lighter grey,
+ * text-slate-400 -> a darker grey), and Tailwind's `@apply` rejects that
+ * as a circular utility dependency even though the actual colors involved
+ * are perfectly well-defined. `theme()` just reads a value out of the
+ * palette, so it sidesteps that check entirely.
+ */
+.dark body {
+  background-color: theme("colors.slate.950");
+  color: theme("colors.slate.100");
+}
+.dark .bg-white {
+  background-color: theme("colors.slate.900");
+}
+.dark .bg-slate-50 {
+  background-color: theme("colors.slate.950");
+}
+.dark .bg-slate-100 {
+  background-color: theme("colors.slate.800");
+}
+.dark .text-slate-900 {
+  color: theme("colors.slate.100");
+}
+.dark .text-slate-700 {
+  color: theme("colors.slate.200");
+}
+.dark .text-slate-600 {
+  color: theme("colors.slate.300");
+}
+.dark .text-slate-500 {
+  color: theme("colors.slate.400");
+}
+.dark .text-slate-400 {
+  color: theme("colors.slate.500");
+}
+.dark .border-slate-200 {
+  border-color: theme("colors.slate.700");
+}
+.dark .border-slate-300 {
+  border-color: theme("colors.slate.600");
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: theme("colors.slate.800");
+}
+.dark input,
+.dark select,
+.dark textarea {
+  border-color: theme("colors.slate.700");
+  background-color: theme("colors.slate.900");
+  color: theme("colors.slate.100");
+}

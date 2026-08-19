@@ -78,11 +78,25 @@ export default function BillingPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         {!loading && !error && status && !status.configured && (
-          <p className="text-sm text-slate-500">
-            Billing is not configured on this server. AI-Mode usage is unlimited. (A server
-            operator can enable a monthly free-tier cap and Pro upgrades by setting
-            RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET.)
-          </p>
+          <div className="text-sm text-slate-500">
+            <p>
+              Billing is not configured on this server — AI-Mode usage stays unlimited, and
+              nothing else about the app changes. This is expected until Razorpay credentials are
+              set; there's no in-app form for it on purpose (real API secrets shouldn't be pasted
+              into a web page).
+            </p>
+            <p className="mt-2">
+              A server operator can turn it on by setting three environment variables —{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_KEY_ID</code>,{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_KEY_SECRET</code>, and{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_WEBHOOK_SECRET</code> —
+              on the machine running the backend, then restarting it. See{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">backend/.env.example</code> and the
+              step-by-step guide in <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">docs/MONETIZATION.md</code>{" "}
+              (§6) for exactly where to get the values and how to set them on Windows/PowerShell,
+              macOS/Linux, systemd, or Docker.
+            </p>
+          </div>
         )}
 
         {!loading && !error && status && status.configured && (

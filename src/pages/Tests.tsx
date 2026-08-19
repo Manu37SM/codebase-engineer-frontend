@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
+import ActivityIndicator from "../components/ActivityIndicator";
 import {
   diagnoseTestFailure,
   getTestFailureDiagnosis,
@@ -147,13 +148,16 @@ export default function TestsPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-slate-900">Tests</h1>
-        <button
-          onClick={handleRunTests}
-          disabled={running}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {running ? "Running…" : "Run Tests"}
-        </button>
+        <div className="flex items-center gap-3">
+          {running && <ActivityIndicator label="Running the project's real test command" />}
+          <button
+            onClick={handleRunTests}
+            disabled={running}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {running ? "Running…" : "Run Tests"}
+          </button>
+        </div>
       </div>
 
       {loading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
@@ -184,16 +188,22 @@ export default function TestsPage() {
 
           {selectedRun.status === "unsupported" ? (
             <p className="mt-3 text-sm text-slate-600">{selectedRun.reason}</p>
+          ) : selectedRun.passed === null && selectedRun.failed === null && selectedRun.skipped === null ? (
+            <p className="mt-3 text-sm text-slate-500">
+              The run finished (exit code {selectedRun.exit_code}), but this app doesn't know how to
+              parse pass/fail counts out of {selectedRun.framework ?? "this"}'s output yet — see the
+              raw output below for the real result.
+            </p>
           ) : (
             <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-700">
               <span>
-                <span className="font-medium text-emerald-700">{selectedRun.passed}</span> passed
+                <span className="font-medium text-emerald-700">{selectedRun.passed ?? "?"}</span> passed
               </span>
               <span>
-                <span className="font-medium text-red-700">{selectedRun.failed}</span> failed
+                <span className="font-medium text-red-700">{selectedRun.failed ?? "?"}</span> failed
               </span>
               <span>
-                <span className="font-medium text-slate-600">{selectedRun.skipped}</span> skipped
+                <span className="font-medium text-slate-600">{selectedRun.skipped ?? "?"}</span> skipped
               </span>
               {selectedRun.duration_ms !== null && (
                 <span className="text-slate-500">{(selectedRun.duration_ms / 1000).toFixed(1)}s</span>
@@ -282,7 +292,9 @@ export default function TestsPage() {
                       {run.status}
                     </span>
                     <span className="text-slate-700">
-                      {run.passed} passed, {run.failed} failed, {run.skipped} skipped
+                      {run.passed === null && run.failed === null && run.skipped === null
+                        ? "counts unknown"
+                        : `${run.passed ?? "?"} passed, ${run.failed ?? "?"} failed, ${run.skipped ?? "?"} skipped`}
                     </span>
                   </span>
                   <span className="text-xs text-slate-400">

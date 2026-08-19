@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useProjects } from "../context/ProjectContext";
 import { createProject, discoverProject, indexProject } from "../lib/api";
 import { ApiError } from "../lib/api";
+import ActivityIndicator from "../components/ActivityIndicator";
 
 export default function RepositoriesPage() {
   const { projects, loading, error, selectedProjectId, selectProject, refresh } = useProjects();
@@ -112,6 +113,9 @@ export default function RepositoriesPage() {
                 <div className="text-xs text-slate-500">{project.root_path}</div>
               </div>
               <div className="flex items-center gap-2">
+                {busyProjectId === project.id && (
+                  <ActivityIndicator label="Discovering & indexing files" />
+                )}
                 {selectedProjectId === project.id ? (
                   <span className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white">
                     Selected

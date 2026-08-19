@@ -32,6 +32,8 @@ import type {
   TestRunRecord,
   BillingStatus,
   CheckoutOrder,
+  ChangesResult,
+  AnalysisHistoryResult,
 } from "./types";
 
 /**
@@ -155,6 +157,11 @@ export function listFindings(
   if (params?.offset !== undefined) query.set("offset", String(params.offset));
   const qs = query.toString();
   return request(`/api/v1/projects/${id}/findings${qs ? `?${qs}` : ""}`);
+}
+
+/** Real analysis-run history (oldest first), behind the Dashboard's findings-trend chart. */
+export function getAnalysisHistory(id: string): Promise<AnalysisHistoryResult> {
+  return request(`/api/v1/projects/${id}/analysis/history`);
 }
 
 /**
@@ -379,6 +386,15 @@ export function rejectGeneratedTestWrite(id: string, testId: string, reviewerNot
 
 export function writeAndRunGeneratedTest(id: string, testId: string): Promise<WriteAndRunTestResult> {
   return request(`/api/v1/projects/${id}/generated-tests/${testId}/write-and-run`, { method: "POST" });
+}
+
+// Changes page (unified review queue) — every patch and generated test for
+// the whole project in one call, regardless of which finding produced it.
+// Taking action on any listed item still goes through the existing
+// per-item approve/reject/generate/apply/write-and-run functions above —
+// this is read-only, just a different way of listing the same rows.
+export function listChanges(id: string): Promise<ChangesResult> {
+  return request(`/api/v1/projects/${id}/changes`);
 }
 
 export function getGitAnalysis(

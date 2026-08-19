@@ -14,6 +14,8 @@ vi.mock("../lib/api", async () => {
     listFiles: vi.fn(),
     getGitAnalysis: vi.fn(),
     getDependencies: vi.fn(),
+    listFindings: vi.fn(),
+    getAnalysisHistory: vi.fn(),
   };
 });
 
@@ -23,6 +25,8 @@ const mockedApi = api as unknown as {
   listFiles: ReturnType<typeof vi.fn>;
   getGitAnalysis: ReturnType<typeof vi.fn>;
   getDependencies: ReturnType<typeof vi.fn>;
+  listFindings: ReturnType<typeof vi.fn>;
+  getAnalysisHistory: ReturnType<typeof vi.fn>;
 };
 
 const NON_GIT_RESULT = {
@@ -67,6 +71,10 @@ describe("DashboardPage", () => {
     mockedApi.getGitAnalysis.mockResolvedValue(NON_GIT_RESULT);
     mockedApi.getDependencies.mockReset();
     mockedApi.getDependencies.mockResolvedValue(NO_DEPS_RESULT);
+    mockedApi.listFindings.mockReset();
+    mockedApi.listFindings.mockResolvedValue({ findings: [], total: 0, latestRun: null });
+    mockedApi.getAnalysisHistory.mockReset();
+    mockedApi.getAnalysisHistory.mockResolvedValue({ runs: [] });
     window.localStorage.clear();
   });
 
@@ -246,5 +254,58 @@ describe("DashboardPage", () => {
       expect(screen.getByText("dependency scan failed")).toBeInTheDocument();
     });
     expect(screen.getByText("my-app")).toBeInTheDocument();
+  });
+
+  it("renders real findings-by-severity and trend charts from analysis history", async () => {
+    mockDashboardBasics();
+    mockedApi.getGitAnalysis.mockResolvedValue(NON_GIT_RESULT);
+    mockedApi.listFindings.mockResolvedValue({
+      findings: [
+        { id: "f1", project_id: "p1", rule_id: "hardcoded-secret", severity: "high", category: "security", file_path: "a.ts", line_start: 1, line_end: 1, evidence: null, explanation: null, recommendation: null, source: "deterministic", created_at: "now" },
+        { id: "f2", project_id: "p1", rule_id: "hardcoded-secret", severity: "high", category: "security", file_path: "b.ts", line_start: 1, line_end: 1, evidence: null, explanation: null, recommendation: null, source: "deterministic", created_at: "now" },
+      ],
+      total: 2,
+      latestRun: null,
+    });
+    mockedApi.getAnalysisHistory.mockResolvedValue({
+      runs: [
+        {
+          id: "r1",
+          project_id: "p1",
+          started_at: "2026-08-17T00:00:00.000Z",
+          finished_at: "2026-08-17T00:01:00.000Z",
+          status: "completed",
+          findings_count: 2,
+          critical_count: 0,
+          high_count: 2,
+          medium_count: 0,
+          low_count: 0,
+        },
+      ],
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Findings by severity")).toBeInTheDocument();
+    });
+    // Severity legend from SeverityBreakdownChart.
+    expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.getByText("Findings trend")).toBeInTheDocument();
+    // No "no completed runs" / "no snapshot" fallback text — real chart data was used.
+    expect(screen.queryByText(/No completed analysis runs yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No runs with a recorded severity snapshot/)).not.toBeInTheDocument();
+  });
+
+  it("shows an honest empty state for the trend chart when there's no analysis history yet", async () => {
+    mockDashboardBasics();
+    mockedApi.getGitAnalysis.mockResolvedValue(NON_GIT_RESULT);
+    mockedApi.getAnalysisHistory.mockResolvedValue({ runs: [] });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No completed analysis runs yet/)).toBeInTheDocument();
+    });
   });
 });

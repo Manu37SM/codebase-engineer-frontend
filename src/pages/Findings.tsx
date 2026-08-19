@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
+import ActivityIndicator from "../components/ActivityIndicator";
 import {
   analyzeRootCause,
   applyPatch,
@@ -574,13 +575,16 @@ export default function FindingsPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-slate-900">Findings</h1>
-        <button
-          onClick={handleRunAnalysis}
-          disabled={running}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {running ? "Running…" : "Run Analysis"}
-        </button>
+        <div className="flex items-center gap-3">
+          {running && <ActivityIndicator label="Scanning the repository for findings" />}
+          <button
+            onClick={handleRunAnalysis}
+            disabled={running}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {running ? "Running…" : "Run Analysis"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -683,7 +687,7 @@ export default function FindingsPage() {
 
               {explainOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {explainLoading === finding.id && <p className="text-slate-500">Loading…</p>}
+                  {explainLoading === finding.id && <ActivityIndicator label="Asking the AI provider to explain this finding" />}
                   {explainError && explainLoading !== finding.id && (
                     <p className="text-red-600">{explainError}</p>
                   )}
@@ -731,7 +735,7 @@ export default function FindingsPage() {
 
               {rootCauseOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {rootCauseLoading === finding.id && <p className="text-slate-500">Loading…</p>}
+                  {rootCauseLoading === finding.id && <ActivityIndicator label="Asking the AI provider for a root-cause analysis" />}
                   {rootCauseError && rootCauseLoading !== finding.id && (
                     <p className="text-red-600">{rootCauseError}</p>
                   )}
@@ -772,7 +776,7 @@ export default function FindingsPage() {
 
               {fixPlanOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {fixPlanLoading === finding.id && <p className="text-slate-500">Loading…</p>}
+                  {fixPlanLoading === finding.id && <ActivityIndicator label="Asking the AI provider for a fix plan" />}
                   {fixPlanError && fixPlanLoading !== finding.id && (
                     <p className="text-red-600">{fixPlanError}</p>
                   )}
@@ -1041,7 +1045,7 @@ function PatchesView({
 
                   {selfReviewOpenFor === patch.id && (
                     <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">
-                      {selfReviewLoading === patch.id && <p className="text-slate-500">Loading…</p>}
+                      {selfReviewLoading === patch.id && <ActivityIndicator label="Asking the AI provider to self-review this diff" />}
                       {selfReviewError && selfReviewLoading !== patch.id && (
                         <p className="text-red-600">{selfReviewError}</p>
                       )}

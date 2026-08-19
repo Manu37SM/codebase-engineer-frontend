@@ -119,6 +119,17 @@ export interface AnalysisRun {
   finished_at: string | null;
   status: string;
   findings_count: number;
+  // Per-severity snapshot taken when this run finished (migration 013).
+  // Null on runs from before that migration, or on a failed run — never
+  // fabricated as 0. See backend/src/db/migrations/013_*.sql.
+  critical_count: number | null;
+  high_count: number | null;
+  medium_count: number | null;
+  low_count: number | null;
+}
+
+export interface AnalysisHistoryResult {
+  runs: AnalysisRun[];
 }
 
 export type DependencyType = "dependency" | "devDependency";
@@ -153,9 +164,10 @@ export interface TestRunRecord {
   command: string | null;
   exit_code: number | null;
   duration_ms: number | null;
-  passed: number;
-  failed: number;
-  skipped: number;
+  /** null means the run's framework's output couldn't be parsed for counts — never fabricated as 0. */
+  passed: number | null;
+  failed: number | null;
+  skipped: number | null;
   stdout_ref?: string | null;
   stderr_ref?: string | null;
   status: TestRunStatus;
@@ -480,6 +492,28 @@ export interface WriteAndRunTestResult {
   testRun: TestRunRecord;
   supported: boolean;
   reason?: string;
+}
+
+// Changes page (unified review queue, added alongside Phase 26). Both
+// records below are project-wide (every finding, not just one), left-
+// joined against `finding` on the backend so a patch/generated test still
+// shows up even if its finding was somehow removed — `findingRuleId` etc.
+// are null in that case rather than the row silently vanishing.
+export interface PatchWithFindingContext extends PatchRecord {
+  findingRuleId: string | null;
+  findingFilePath: string | null;
+  findingSeverity: string | null;
+}
+
+export interface GeneratedTestWithFindingContext extends GeneratedTestRecord {
+  findingRuleId: string | null;
+  findingFilePath: string | null;
+  findingSeverity: string | null;
+}
+
+export interface ChangesResult {
+  patches: PatchWithFindingContext[];
+  generatedTests: GeneratedTestWithFindingContext[];
 }
 
 /** Parses the JSON-string columns on a RepositorySnapshot into usable values. */

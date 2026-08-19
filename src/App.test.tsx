@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
 import { ProjectProvider } from "./context/ProjectContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import * as api from "./lib/api";
 
 vi.mock("./lib/api", async () => {
@@ -19,11 +20,13 @@ describe("App shell", () => {
 
   it("renders the top-level navigation sections without crashing", async () => {
     render(
-      <MemoryRouter initialEntries={["/"]}>
-        <ProjectProvider>
-          <App />
-        </ProjectProvider>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/"]}>
+          <ProjectProvider>
+            <App />
+          </ProjectProvider>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(screen.getByText("Codebase Engineer")).toBeInTheDocument();

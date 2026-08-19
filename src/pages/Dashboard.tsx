@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
-import { getDependencies, getGitAnalysis, getProject, listFiles } from "../lib/api";
+import { getAnalysisHistory, getDependencies, getGitAnalysis, getProject, listFiles, listFindings } from "../lib/api";
 import {
   parseSnapshot,
+  type AnalysisRun,
   type DependencyAnalysisResult,
+  type FindingRecord,
   type GitAnalysisResult,
   type RepositorySnapshot,
 } from "../lib/types";
+import {
+  ChurnHotspotsChart,
+  FindingsTrendChart,
+  LanguageBreakdownChart,
+  SeverityBreakdownChart,
+} from "../components/Charts";
 
 export default function DashboardPage() {
   const { selectedProject } = useProjects();
@@ -17,6 +25,10 @@ export default function DashboardPage() {
   const [gitError, setGitError] = useState<string | null>(null);
   const [dependencies, setDependencies] = useState<DependencyAnalysisResult | null>(null);
   const [dependenciesError, setDependenciesError] = useState<string | null>(null);
+  const [findings, setFindings] = useState<FindingRecord[] | null>(null);
+  const [findingsError, setFindingsError] = useState<string | null>(null);
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[] | null>(null);
+  const [analysisRunsError, setAnalysisRunsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +40,10 @@ export default function DashboardPage() {
       setGitError(null);
       setDependencies(null);
       setDependenciesError(null);
+      setFindings(null);
+      setFindingsError(null);
+      setAnalysisRuns(null);
+      setAnalysisRunsError(null);
       return;
     }
 
@@ -74,6 +90,29 @@ export default function DashboardPage() {
       .catch((err) => {
         if (!cancelled)
           setDependenciesError(err instanceof Error ? err.message : "Failed to load dependencies");
+      });
+
+    // Also fetched independently — charts should degrade individually,
+    // not take down the whole dashboard if one call fails.
+    setFindings(null);
+    setFindingsError(null);
+    listFindings(selectedProject.id)
+      .then((result) => {
+        if (!cancelled) setFindings(result.findings);
+      })
+      .catch((err) => {
+        if (!cancelled) setFindingsError(err instanceof Error ? err.message : "Failed to load findings");
+      });
+
+    setAnalysisRuns(null);
+    setAnalysisRunsError(null);
+    getAnalysisHistory(selectedProject.id)
+      .then((result) => {
+        if (!cancelled) setAnalysisRuns(result.runs);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setAnalysisRunsError(err instanceof Error ? err.message : "Failed to load analysis history");
       });
 
     return () => {
@@ -193,6 +232,51 @@ export default function DashboardPage() {
           </dl>
         </section>
       </div>
+
+      <section className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Findings by severity</h2>
+          <div className="mt-2">
+            {findingsError && <p className="text-sm text-red-600 dark:text-red-400">{findingsError}</p>}
+            {!findingsError && findings === null && <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>}
+            {!findingsError && findings !== null && <SeverityBreakdownChart findings={findings} />}
+          </div>
+        </div>
+
+        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Findings trend</h2>
+          <div className="mt-2">
+            {analysisRunsError && <p className="text-sm text-red-600 dark:text-red-400">{analysisRunsError}</p>}
+            {!analysisRunsError && analysisRuns === null && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+            )}
+            {!analysisRunsError && analysisRuns !== null && <FindingsTrendChart runs={analysisRuns} />}
+          </div>
+        </div>
+
+        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Languages (by file count)</h2>
+          <div className="mt-2">
+            <LanguageBreakdownChart languages={parsed.languages} />
+          </div>
+        </div>
+
+        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            Churn hotspots{gitAnalysis?.isGitRepository ? ` (last ${gitAnalysis.churnWindowDays} days)` : ""}
+          </h2>
+          <div className="mt-2">
+            {gitError && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Unavailable — see Git activity below.</p>
+            )}
+            {!gitError && !gitAnalysis && <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>}
+            {!gitError && gitAnalysis && !gitAnalysis.isGitRepository && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Not applicable — not a Git repository.</p>
+            )}
+            {!gitError && gitAnalysis?.isGitRepository && <ChurnHotspotsChart churn={gitAnalysis.fileChurn} />}
+          </div>
+        </div>
+      </section>
 
       <DependenciesSection dependencies={dependencies} dependenciesError={dependenciesError} />
 
