@@ -14,6 +14,9 @@ vi.mock("../lib/api", async () => {
     listTestRuns: vi.fn(),
     getTestRun: vi.fn(),
     runProjectTests: vi.fn(),
+    listAiProviders: vi.fn(),
+    diagnoseTestFailure: vi.fn(),
+    getTestFailureDiagnosis: vi.fn(),
   };
 });
 
@@ -22,6 +25,9 @@ const mockedApi = api as unknown as {
   listTestRuns: ReturnType<typeof vi.fn>;
   getTestRun: ReturnType<typeof vi.fn>;
   runProjectTests: ReturnType<typeof vi.fn>;
+  listAiProviders: ReturnType<typeof vi.fn>;
+  diagnoseTestFailure: ReturnType<typeof vi.fn>;
+  getTestFailureDiagnosis: ReturnType<typeof vi.fn>;
 };
 
 const PROJECT = { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" };
@@ -43,6 +49,17 @@ const PASSED_RUN = {
   started_at: "2026-08-18T00:00:00.000Z",
 };
 
+const FAILED_RUN = {
+  ...PASSED_RUN,
+  id: "run-failed",
+  exit_code: 1,
+  passed: 8,
+  failed: 2,
+  stdout_ref: "FAIL src/a.test.ts",
+  stderr_ref: "AssertionError: expected 3 but got -1",
+  status: "failed" as const,
+};
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -59,6 +76,11 @@ describe("TestsPage", () => {
     mockedApi.listTestRuns.mockReset();
     mockedApi.getTestRun.mockReset();
     mockedApi.runProjectTests.mockReset();
+    mockedApi.listAiProviders.mockReset();
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [] });
+    mockedApi.diagnoseTestFailure.mockReset();
+    mockedApi.getTestFailureDiagnosis.mockReset();
+    mockedApi.getTestFailureDiagnosis.mockResolvedValue({ diagnosis: null });
     window.localStorage.clear();
   });
 
@@ -162,5 +184,115 @@ describe("TestsPage", () => {
     await waitFor(() => {
       expect(mockedApi.getTestRun).toHaveBeenLastCalledWith("p1", "run0");
     });
+  });
+
+  it("does not show an AI diagnosis toggle for a passed run", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listTestRuns.mockResolvedValue({ runs: [PASSED_RUN] });
+    mockedApi.getTestRun.mockResolvedValue({ run: PASSED_RUN });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status")).toHaveTextContent("passed");
+    });
+    expect(screen.queryByRole("button", { name: "AI diagnosis" })).not.toBeInTheDocument();
+  });
+
+  it("shows a disabled 'Diagnose failure' button when no AI provider is enabled", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listTestRuns.mockResolvedValue({ runs: [FAILED_RUN] });
+    mockedApi.getTestRun.mockResolvedValue({ run: FAILED_RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", name: "P", kind: "openai-compatible", enabled: false }] });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status")).toHaveTextContent("failed");
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "AI diagnosis" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No AI diagnosis generated yet.")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Diagnose failure" })).toBeDisabled();
+  });
+
+  it("generates and displays an AI failure diagnosis for a failed run", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listTestRuns.mockResolvedValue({ runs: [FAILED_RUN] });
+    mockedApi.getTestRun.mockResolvedValue({ run: FAILED_RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", name: "P", kind: "openai-compatible", enabled: true }] });
+    mockedApi.diagnoseTestFailure.mockResolvedValue({
+      diagnosis: {
+        likelyCause: "add() subtracts instead of adding.",
+        evidence: ["expected 3 but got -1"],
+        suggestedDirection: "Fix the operator in add().",
+        raw: "raw response",
+      },
+      provider: "openai-compatible",
+      model: "gpt-test",
+      usage: { promptTokens: 10, completionTokens: 5 },
+      contextBundle: { targetId: "run-failed", budgetTokens: 4000, selected: [], excluded: [], totalTokens: 0 },
+    });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status")).toHaveTextContent("failed");
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "AI diagnosis" }));
+    await waitFor(() => {
+      expect(screen.getByText("No AI diagnosis generated yet.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Diagnose failure" }));
+
+    expect(mockedApi.diagnoseTestFailure).toHaveBeenCalledWith("p1", "run-failed");
+    await waitFor(() => {
+      expect(screen.getByText("add() subtracts instead of adding.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("expected 3 but got -1")).toBeInTheDocument();
+    expect(screen.getByText("Fix the operator in add().")).toBeInTheDocument();
+  });
+
+  it("shows a previously-generated diagnosis on toggle without a fresh generate call", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listTestRuns.mockResolvedValue({ runs: [FAILED_RUN] });
+    mockedApi.getTestRun.mockResolvedValue({ run: FAILED_RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", name: "P", kind: "openai-compatible", enabled: true }] });
+    mockedApi.getTestFailureDiagnosis.mockResolvedValue({
+      diagnosis: {
+        likelyCause: "Stored cause.",
+        evidence: ["stored evidence"],
+        suggestedDirection: "Stored direction.",
+        raw: "stored raw",
+      },
+      provider: "openai-compatible",
+      model: "gpt-test",
+      generatedAt: "2026-08-18T00:00:00.000Z",
+    });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status")).toHaveTextContent("failed");
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "AI diagnosis" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Stored cause.")).toBeInTheDocument();
+    });
+    expect(mockedApi.diagnoseTestFailure).not.toHaveBeenCalled();
   });
 });

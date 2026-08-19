@@ -316,6 +316,35 @@ export interface StoredRootCauseAnalysis {
   generatedAt?: string;
 }
 
+// AI Mode — Failure Diagnosis (Phase 20). docs/AI_MODE.md §4's "(if
+// failure) AI Diagnosis" workflow step, for a failed TestRun rather than
+// a Finding. Mirrors root-cause analysis's evidence/inference split:
+// likelyCause is the AI's hypothesis, evidence is what it can point to
+// directly in the captured output, suggestedDirection is a short pointer
+// toward a fix — never a diff or a fix plan itself. Any field the
+// response didn't clearly contain is `null` — never fabricated.
+export interface FailureDiagnosisData {
+  likelyCause: string | null;
+  evidence: string[] | null;
+  suggestedDirection: string | null;
+  raw: string;
+}
+
+export interface FailureDiagnosisResult {
+  diagnosis: FailureDiagnosisData;
+  provider: string;
+  model: string;
+  usage: { promptTokens: number | null; completionTokens: number | null };
+  contextBundle: ContextBundle;
+}
+
+export interface StoredFailureDiagnosis {
+  diagnosis: FailureDiagnosisData | null;
+  provider?: string;
+  model?: string;
+  generatedAt?: string;
+}
+
 // AI Mode — Fix Plan (Phase 16). Every AI fix plan has exactly these seven
 // sections per docs/AI_MODE.md §5. Advisory only — nothing here is a diff
 // or gets applied to disk; patch generation (Phase 17) is separate and
@@ -372,6 +401,46 @@ export interface GeneratePatchResult {
   model: string;
   usage: { promptTokens: number | null; completionTokens: number | null };
   contextBundle: ContextBundle;
+}
+
+// AI Mode — Self-Review (Phase 21). docs/AI_MODE.md §6's checklist run
+// against a real proposed patch's real diff: correctness, scope creep,
+// regressions, security, missing tests, unnecessary complexity, and
+// consistency with existing architecture. Advisory only — shown
+// alongside the diff, never used to auto-approve; a self-review never
+// changes a patch's `status`. Any check the response didn't clearly
+// address has `status: null` — never fabricated.
+export type SelfReviewStatus = "pass" | "concern" | "fail" | null;
+
+export interface SelfReviewCheck {
+  status: SelfReviewStatus;
+  note: string | null;
+}
+
+export interface SelfReviewData {
+  correctness: SelfReviewCheck;
+  scopeCreep: SelfReviewCheck;
+  regressions: SelfReviewCheck;
+  security: SelfReviewCheck;
+  missingTests: SelfReviewCheck;
+  unnecessaryComplexity: SelfReviewCheck;
+  architectureConsistency: SelfReviewCheck;
+  raw: string;
+}
+
+export interface SelfReviewResult {
+  review: SelfReviewData;
+  provider: string;
+  model: string;
+  usage: { promptTokens: number | null; completionTokens: number | null };
+  contextBundle: ContextBundle;
+}
+
+export interface StoredSelfReview {
+  review: SelfReviewData | null;
+  provider?: string;
+  model?: string;
+  generatedAt?: string;
 }
 
 // AI Mode — AI Test Generation (Phase 19). Mirrors the Phase 17/18
@@ -462,4 +531,20 @@ export interface AIProviderStatus {
 export interface AIModelInfo {
   id: string;
   contextWindow: number | null;
+}
+
+/** Phase 26 optional monetization architecture — see docs/MONETIZATION.md. */
+export interface BillingStatus {
+  configured: boolean;
+  tier: "free" | "pro";
+  limit: number | null;
+  used: number;
+  subscription: { status: "active" | "inactive"; currentPeriodEnd: string | null } | null;
+}
+
+export interface CheckoutOrder {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
 }

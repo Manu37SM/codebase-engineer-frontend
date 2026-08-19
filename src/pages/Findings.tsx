@@ -17,6 +17,7 @@ import {
   getFindingExplanation,
   getFindingFixPlan,
   getFindingRootCause,
+  getPatchSelfReview,
   listAiProviders,
   listFindingGeneratedTests,
   listFindingPatches,
@@ -27,6 +28,7 @@ import {
   rejectPatch,
   rejectPatchApply,
   runProjectAnalysis,
+  selfReviewPatch,
   writeAndRunGeneratedTest,
 } from "../lib/api";
 import type {
@@ -34,6 +36,7 @@ import type {
   FindingRecord,
   GeneratedTestRecord,
   PatchRecord,
+  SelfReviewData,
   Severity,
   StoredExplanation,
   StoredFixPlan,
@@ -86,6 +89,11 @@ export default function FindingsPage() {
   const [patchesLoading, setPatchesLoading] = useState<string | null>(null);
   const [patchesError, setPatchesError] = useState<string | null>(null);
   const [patchActionBusy, setPatchActionBusy] = useState<string | null>(null);
+
+  const [selfReviewOpenFor, setSelfReviewOpenFor] = useState<string | null>(null);
+  const [selfReviews, setSelfReviews] = useState<Record<string, SelfReviewData>>({});
+  const [selfReviewLoading, setSelfReviewLoading] = useState<string | null>(null);
+  const [selfReviewError, setSelfReviewError] = useState<string | null>(null);
 
   const [generatedTestsOpenFor, setGeneratedTestsOpenFor] = useState<string | null>(null);
   const [generatedTests, setGeneratedTests] = useState<Record<string, GeneratedTestRecord[]>>({});
@@ -381,6 +389,44 @@ export default function FindingsPage() {
       setPatchesError(err instanceof Error ? err.message : "Failed to apply patch.");
     } finally {
       setPatchActionBusy(null);
+    }
+  }
+
+  // Phase 21: AI self-review — advisory only, never changes a patch's
+  // status, so it's just a toggle-and-generate pair (like root-cause
+  // analysis), not a gated action like the patch lifecycle handlers above.
+  async function toggleSelfReview(patchId: string) {
+    if (selfReviewOpenFor === patchId) {
+      setSelfReviewOpenFor(null);
+      return;
+    }
+    setSelfReviewOpenFor(patchId);
+    setSelfReviewError(null);
+    if (selfReviews[patchId] || !selectedProject) return;
+    setSelfReviewLoading(patchId);
+    try {
+      const stored = await getPatchSelfReview(selectedProject.id, patchId);
+      if (stored.review) {
+        setSelfReviews((prev) => ({ ...prev, [patchId]: stored.review! }));
+      }
+    } catch (err) {
+      setSelfReviewError(err instanceof Error ? err.message : "Failed to load AI self-review.");
+    } finally {
+      setSelfReviewLoading(null);
+    }
+  }
+
+  async function generateSelfReview(patchId: string) {
+    if (!selectedProject) return;
+    setSelfReviewError(null);
+    setSelfReviewLoading(patchId);
+    try {
+      const result = await selfReviewPatch(selectedProject.id, patchId);
+      setSelfReviews((prev) => ({ ...prev, [patchId]: result.review }));
+    } catch (err) {
+      setSelfReviewError(err instanceof Error ? err.message : "Failed to generate AI self-review.");
+    } finally {
+      setSelfReviewLoading(null);
     }
   }
 
@@ -784,6 +830,12 @@ export default function FindingsPage() {
                       onApproveApply={(patchId) => handleApprovePatchApply(finding.id, patchId)}
                       onRejectApply={(patchId) => handleRejectPatchApply(finding.id, patchId)}
                       onApply={(patchId) => handleApplyPatch(finding.id, patchId)}
+                      selfReviewOpenFor={selfReviewOpenFor}
+                      selfReviews={selfReviews}
+                      selfReviewLoading={selfReviewLoading}
+                      selfReviewError={selfReviewError}
+                      onToggleSelfReview={toggleSelfReview}
+                      onGenerateSelfReview={generateSelfReview}
                     />
                   )}
                 </div>
@@ -850,6 +902,12 @@ function PatchesView({
   onApproveApply,
   onRejectApply,
   onApply,
+  selfReviewOpenFor,
+  selfReviews,
+  selfReviewLoading,
+  selfReviewError,
+  onToggleSelfReview,
+  onGenerateSelfReview,
 }: {
   findingId: string;
   patchList: PatchRecord[];
@@ -862,6 +920,12 @@ function PatchesView({
   onApproveApply: (patchId: string) => void;
   onRejectApply: (patchId: string) => void;
   onApply: (patchId: string) => void;
+  selfReviewOpenFor: string | null;
+  selfReviews: Record<string, SelfReviewData>;
+  selfReviewLoading: string | null;
+  selfReviewError: string | null;
+  onToggleSelfReview: (patchId: string) => void;
+  onGenerateSelfReview: (patchId: string) => void;
 }) {
   const disabledTitle = hasEnabledProvider
     ? undefined
@@ -965,10 +1029,101 @@ function PatchesView({
                   {patch.diff_text}
                 </pre>
               )}
+
+              {patch.diff_text && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => onToggleSelfReview(patch.id)}
+                    className="text-xs font-medium text-slate-500 underline hover:text-slate-700"
+                  >
+                    {selfReviewOpenFor === patch.id ? "Hide AI self-review" : "AI self-review"}
+                  </button>
+
+                  {selfReviewOpenFor === patch.id && (
+                    <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">
+                      {selfReviewLoading === patch.id && <p className="text-slate-500">Loading…</p>}
+                      {selfReviewError && selfReviewLoading !== patch.id && (
+                        <p className="text-red-600">{selfReviewError}</p>
+                      )}
+                      {selfReviewLoading !== patch.id && selfReviews[patch.id] && (
+                        <SelfReviewView review={selfReviews[patch.id]} />
+                      )}
+                      {selfReviewLoading !== patch.id && !selfReviews[patch.id] && !selfReviewError && (
+                        <div>
+                          <p className="text-slate-500">No AI self-review generated yet.</p>
+                          <button
+                            onClick={() => onGenerateSelfReview(patch.id)}
+                            disabled={!hasEnabledProvider}
+                            title={disabledTitle}
+                            className="mt-1 rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
+                          >
+                            Generate self-review
+                          </button>
+                          {!hasEnabledProvider && <p className="mt-1 text-slate-400">{disabledTitle}</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const SELF_REVIEW_STATUS_STYLES: Record<string, string> = {
+  pass: "bg-emerald-100 text-emerald-800",
+  concern: "bg-amber-100 text-amber-800",
+  fail: "bg-red-100 text-red-800",
+};
+
+const SELF_REVIEW_CHECKS: { key: keyof Omit<SelfReviewData, "raw">; label: string }[] = [
+  { key: "correctness", label: "Correctness" },
+  { key: "scopeCreep", label: "Scope creep" },
+  { key: "regressions", label: "Regressions" },
+  { key: "security", label: "Security" },
+  { key: "missingTests", label: "Missing tests" },
+  { key: "unnecessaryComplexity", label: "Unnecessary complexity" },
+  { key: "architectureConsistency", label: "Architecture consistency" },
+];
+
+/**
+ * Renders a Phase 21 self-review, per docs/AI_MODE.md §6's seven-item
+ * checklist. Advisory only, same visual register as `RootCauseView` and
+ * the Tests page's `FailureDiagnosisView` — a colored status chip per
+ * check plus its one-sentence note, "unknown" (not hidden or guessed)
+ * for anything the model's response didn't clearly address.
+ */
+function SelfReviewView({ review }: { review: SelfReviewData }) {
+  return (
+    <div>
+      <ul className="space-y-1">
+        {SELF_REVIEW_CHECKS.map(({ key, label }) => {
+          const check = review[key];
+          return (
+            <li key={key} className="flex items-start gap-2">
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+                  check.status ? SELF_REVIEW_STATUS_STYLES[check.status] : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {check.status ?? "unknown"}
+              </span>
+              <span className="text-slate-700">
+                <span className="font-medium">{label}:</span> {check.note ?? "Not reported in the expected format."}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <details className="mt-2">
+        <summary className="cursor-pointer text-slate-500">Raw response</summary>
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap text-slate-600">{review.raw}</pre>
+      </details>
     </div>
   );
 }

@@ -8,16 +8,20 @@ import type {
   ContextBundle,
   DependencyAnalysisResult,
   ExplainFindingResult,
+  FailureDiagnosisResult,
   FixPlanResult,
   GeneratePatchResult,
   GeneratedTestRecord,
   GenerateTestResult,
   PatchRecord,
   RootCauseAnalysisResult,
+  SelfReviewResult,
   WriteAndRunTestResult,
   StoredExplanation,
+  StoredFailureDiagnosis,
   StoredFixPlan,
   StoredRootCauseAnalysis,
+  StoredSelfReview,
   DiscoveryResult,
   FileRecord,
   FindingRecord,
@@ -26,6 +30,8 @@ import type {
   Project,
   RepositorySnapshot,
   TestRunRecord,
+  BillingStatus,
+  CheckoutOrder,
 } from "./types";
 
 /**
@@ -273,6 +279,27 @@ export function applyPatch(id: string, patchId: string): Promise<{ patch: PatchR
   return request(`/api/v1/projects/${id}/patches/${patchId}/apply`, { method: "POST" });
 }
 
+// AI Mode — Self-Review (Phase 21). docs/AI_MODE.md §6's checklist,
+// advisory only — never changes a patch's status and is never a
+// precondition for approve-apply/apply. Can be requested at any point
+// once the patch has a real diff.
+
+export function selfReviewPatch(
+  id: string,
+  patchId: string,
+  options?: { providerId?: string; budgetTokens?: number }
+): Promise<SelfReviewResult> {
+  return request(`/api/v1/projects/${id}/patches/${patchId}/self-review`, {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+}
+
+/** Read-only: the most recent successful self-review on file for a patch, if any — never calls a provider. */
+export function getPatchSelfReview(id: string, patchId: string): Promise<StoredSelfReview> {
+  return request(`/api/v1/projects/${id}/patches/${patchId}/self-review`);
+}
+
 // AI Mode — AI Test Generation (Phase 19). Mirrors the patch lifecycle's
 // two gates: creating never calls a provider, generating never writes a
 // file, and write-and-run always executes the project's real test
@@ -359,6 +386,28 @@ export function getTestRun(id: string, runId: string): Promise<{ run: TestRunRec
   return request(`/api/v1/projects/${id}/tests/${runId}`);
 }
 
+/**
+ * Phase 20's AI call: docs/AI_MODE.md §4's "(if failure) AI Diagnosis"
+ * step, for a failed TestRun. Only fires on an explicit call — never
+ * automatically — and only succeeds server-side for a run whose status
+ * is `failed`.
+ */
+export function diagnoseTestFailure(
+  id: string,
+  runId: string,
+  options?: { providerId?: string; budgetTokens?: number }
+): Promise<FailureDiagnosisResult> {
+  return request(`/api/v1/projects/${id}/tests/${runId}/diagnose`, {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+}
+
+/** Read-only: the most recent successful failure diagnosis on file for a test run, if any — never calls a provider. */
+export function getTestFailureDiagnosis(id: string, runId: string): Promise<StoredFailureDiagnosis> {
+  return request(`/api/v1/projects/${id}/tests/${runId}/diagnosis`);
+}
+
 export function getDependencies(id: string): Promise<DependencyAnalysisResult> {
   return request(`/api/v1/projects/${id}/dependencies`);
 }
@@ -410,4 +459,12 @@ export function checkAiProviderStatus(id: string): Promise<AIProviderStatus> {
 
 export function listAiProviderModels(id: string): Promise<{ models: AIModelInfo[] }> {
   return request(`/api/v1/ai/providers/${id}/models`);
+}
+
+export function getBillingStatus(): Promise<BillingStatus> {
+  return request("/api/v1/billing/status");
+}
+
+export function createBillingCheckout(): Promise<CheckoutOrder> {
+  return request("/api/v1/billing/checkout", { method: "POST" });
 }

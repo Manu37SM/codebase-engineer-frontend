@@ -111,13 +111,29 @@ describe("DashboardPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("my-app")).toBeInTheDocument();
-    expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getByText("clean")).toBeInTheDocument();
-    expect(screen.getByText("TypeScript")).toBeInTheDocument();
-    expect(screen.getByText("React")).toBeInTheDocument();
-    expect(screen.getByText("10")).toBeInTheDocument(); // total files stat tile
-    expect(screen.getByText("2")).toBeInTheDocument(); // test files stat tile
+    // Asserted inside a single `waitFor` rather than one `findByText` up
+    // front followed by synchronous `getByText`s: the initial data load
+    // resolves two independent promise chains a render apart (the fetch's
+    // `.then` that sets `snapshot`/`fileTotals`, then a separate `.finally`
+    // microtask that flips `loading` false), and this page also depends on
+    // `ProjectContext`'s own async project-list load completing first. A
+    // single `findByText("my-app")` only guarantees *a* render containing
+    // that text happened at some point — not that the render RTL happened
+    // to observe was the final, fully-settled one. On a slower or
+    // differently-scheduled event loop (seen in practice on Windows) the
+    // synchronous follow-up assertions could run against a DOM snapshot
+    // that had already moved on. Polling the whole assertion group together
+    // removes that race: it only succeeds once every field is present
+    // simultaneously, in the same commit.
+    await waitFor(() => {
+      expect(screen.getByText("my-app")).toBeInTheDocument();
+      expect(screen.getByText("main")).toBeInTheDocument();
+      expect(screen.getByText("clean")).toBeInTheDocument();
+      expect(screen.getByText("TypeScript")).toBeInTheDocument();
+      expect(screen.getByText("React")).toBeInTheDocument();
+      expect(screen.getByText("10")).toBeInTheDocument(); // total files stat tile
+      expect(screen.getByText("2")).toBeInTheDocument(); // test files stat tile
+    });
   });
 
   const SNAPSHOT = {

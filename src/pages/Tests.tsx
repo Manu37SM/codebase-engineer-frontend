@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
-import { getTestRun, listTestRuns, runProjectTests } from "../lib/api";
-import type { TestRunRecord, TestRunStatus } from "../lib/types";
+import {
+  diagnoseTestFailure,
+  getTestFailureDiagnosis,
+  getTestRun,
+  listAiProviders,
+  listTestRuns,
+  runProjectTests,
+} from "../lib/api";
+import type { FailureDiagnosisData, TestRunRecord, TestRunStatus } from "../lib/types";
 
 const STATUS_STYLES: Record<TestRunStatus, string> = {
   passed: "bg-emerald-100 text-emerald-800",
@@ -20,6 +27,17 @@ export default function TestsPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOutput, setShowOutput] = useState(false);
+  const [hasEnabledProvider, setHasEnabledProvider] = useState(false);
+  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
+  const [diagnoses, setDiagnoses] = useState<Record<string, FailureDiagnosisData>>({});
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listAiProviders()
+      .then((res) => setHasEnabledProvider(res.providers.some((p) => p.enabled)))
+      .catch(() => setHasEnabledProvider(false));
+  }, []);
 
   function loadHistory() {
     if (!selectedProject) return;
@@ -49,6 +67,8 @@ export default function TestsPage() {
     setRunning(true);
     setError(null);
     setShowOutput(false);
+    setDiagnosisOpen(false);
+    setDiagnosisError(null);
     try {
       await runProjectTests(selectedProject.id);
       loadHistory();
@@ -62,11 +82,49 @@ export default function TestsPage() {
   async function handleSelectRun(run: TestRunRecord) {
     if (!selectedProject) return;
     setShowOutput(false);
+    setDiagnosisOpen(false);
+    setDiagnosisError(null);
     try {
       const full = await getTestRun(selectedProject.id, run.id);
       setSelectedRun(full.run);
     } catch {
       setSelectedRun(run);
+    }
+  }
+
+  async function toggleDiagnosis() {
+    if (!selectedProject || !selectedRun) return;
+    if (diagnosisOpen) {
+      setDiagnosisOpen(false);
+      return;
+    }
+    setDiagnosisOpen(true);
+    setDiagnosisError(null);
+    if (diagnoses[selectedRun.id]) return;
+    setDiagnosisLoading(true);
+    try {
+      const stored = await getTestFailureDiagnosis(selectedProject.id, selectedRun.id);
+      if (stored.diagnosis) {
+        setDiagnoses((prev) => ({ ...prev, [selectedRun.id]: stored.diagnosis! }));
+      }
+    } catch (err) {
+      setDiagnosisError(err instanceof Error ? err.message : "Failed to load AI failure diagnosis.");
+    } finally {
+      setDiagnosisLoading(false);
+    }
+  }
+
+  async function generateDiagnosis() {
+    if (!selectedProject || !selectedRun) return;
+    setDiagnosisError(null);
+    setDiagnosisLoading(true);
+    try {
+      const result = await diagnoseTestFailure(selectedProject.id, selectedRun.id);
+      setDiagnoses((prev) => ({ ...prev, [selectedRun.id]: result.diagnosis }));
+    } catch (err) {
+      setDiagnosisError(err instanceof Error ? err.message : "Failed to generate AI failure diagnosis.");
+    } finally {
+      setDiagnosisLoading(false);
     }
   }
 
@@ -159,6 +217,49 @@ export default function TestsPage() {
               )}
             </div>
           )}
+
+          {selectedRun.status === "failed" && (
+            <div className="mt-3">
+              <button
+                onClick={toggleDiagnosis}
+                className="text-xs font-medium text-slate-600 underline"
+              >
+                {diagnosisOpen ? "Hide AI diagnosis" : "AI diagnosis"}
+              </button>
+
+              {diagnosisOpen && (
+                <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                  {diagnosisLoading && <p className="text-slate-500">Loading…</p>}
+                  {diagnosisError && !diagnosisLoading && <p className="text-red-600">{diagnosisError}</p>}
+                  {!diagnosisLoading && diagnoses[selectedRun.id] && (
+                    <FailureDiagnosisView diagnosis={diagnoses[selectedRun.id]} />
+                  )}
+                  {!diagnosisLoading && !diagnoses[selectedRun.id] && !diagnosisError && (
+                    <div>
+                      <p className="text-slate-500">No AI diagnosis generated yet.</p>
+                      <button
+                        onClick={generateDiagnosis}
+                        disabled={!hasEnabledProvider}
+                        title={
+                          hasEnabledProvider
+                            ? undefined
+                            : "No AI provider is configured and enabled. Configure one in AI Mode first."
+                        }
+                        className="mt-1 rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        Diagnose failure
+                      </button>
+                      {!hasEnabledProvider && (
+                        <p className="mt-1 text-slate-400">
+                          No AI provider is configured and enabled. Configure one in AI Mode first.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -193,6 +294,44 @@ export default function TestsPage() {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Renders a Phase 20 failure diagnosis, mirroring Findings.tsx's
+ * `RootCauseView` — likely cause as prose, evidence as a bulleted list,
+ * suggested direction as prose. Any field the model's response didn't
+ * clearly contain is shown as "Not reported" rather than hidden or
+ * guessed. Deliberately does not render a diff or code — this workflow
+ * is read-only diagnosis, not patch generation; the existing fix-plan /
+ * patch flow on the Findings page is the human-approval-gated path for
+ * an actual change.
+ */
+function FailureDiagnosisView({ diagnosis }: { diagnosis: FailureDiagnosisData }) {
+  return (
+    <div>
+      <p className="font-medium text-slate-700">Likely cause</p>
+      <p className="text-slate-800">{diagnosis.likelyCause ?? "Not reported in the expected format."}</p>
+
+      <p className="mt-2 font-medium text-slate-700">Evidence</p>
+      {diagnosis.evidence ? (
+        <ul className="mt-1 list-disc pl-4 text-slate-800">
+          {diagnosis.evidence.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-slate-400">Not reported in the expected format — see raw response below.</p>
+      )}
+
+      <p className="mt-2 font-medium text-slate-700">Suggested direction</p>
+      <p className="text-slate-800">{diagnosis.suggestedDirection ?? "Not reported in the expected format."}</p>
+
+      <details className="mt-2">
+        <summary className="cursor-pointer text-slate-500">Raw response</summary>
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap text-slate-600">{diagnosis.raw}</pre>
+      </details>
     </div>
   );
 }

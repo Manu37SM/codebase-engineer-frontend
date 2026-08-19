@@ -29,6 +29,8 @@ vi.mock("../lib/api", async () => {
     approvePatchApply: vi.fn(),
     rejectPatchApply: vi.fn(),
     applyPatch: vi.fn(),
+    getPatchSelfReview: vi.fn(),
+    selfReviewPatch: vi.fn(),
     listFindingGeneratedTests: vi.fn(),
     createGeneratedTest: vi.fn(),
     approveGeneratedTest: vi.fn(),
@@ -60,6 +62,8 @@ const mockedApi = api as unknown as {
   approvePatchApply: ReturnType<typeof vi.fn>;
   rejectPatchApply: ReturnType<typeof vi.fn>;
   applyPatch: ReturnType<typeof vi.fn>;
+  getPatchSelfReview: ReturnType<typeof vi.fn>;
+  selfReviewPatch: ReturnType<typeof vi.fn>;
   listFindingGeneratedTests: ReturnType<typeof vi.fn>;
   createGeneratedTest: ReturnType<typeof vi.fn>;
   approveGeneratedTest: ReturnType<typeof vi.fn>;
@@ -112,6 +116,9 @@ describe("FindingsPage", () => {
     mockedApi.approvePatchApply.mockReset();
     mockedApi.rejectPatchApply.mockReset();
     mockedApi.applyPatch.mockReset();
+    mockedApi.getPatchSelfReview.mockReset();
+    mockedApi.getPatchSelfReview.mockResolvedValue({ review: null });
+    mockedApi.selfReviewPatch.mockReset();
     mockedApi.listFindingGeneratedTests.mockReset();
     mockedApi.createGeneratedTest.mockReset();
     mockedApi.approveGeneratedTest.mockReset();
@@ -745,6 +752,98 @@ describe("FindingsPage", () => {
 
     expect(mockedApi.applyPatch).toHaveBeenLastCalledWith("p1", "patch1");
     expect(await screen.findByText("Applied to disk.")).toBeInTheDocument();
+  });
+
+  it("does not show an AI self-review action before a patch has a diff", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listFindings.mockResolvedValue({ findings: [FINDING], total: 1, latestRun: RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", enabled: true }] });
+    mockedApi.listFindingPatches.mockResolvedValue({ patches: [PATCH_PENDING] });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+    await screen.findByText("src/big.ts:1");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Patches" }));
+    await screen.findByRole("button", { name: "Approve for generation" });
+
+    expect(screen.queryByRole("button", { name: "AI self-review" })).not.toBeInTheDocument();
+  });
+
+  it("generates and displays an AI self-review for a proposed patch, without changing its status", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listFindings.mockResolvedValue({ findings: [FINDING], total: 1, latestRun: RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", enabled: true }] });
+    mockedApi.listFindingPatches.mockResolvedValue({ patches: [PATCH_PROPOSED] });
+    mockedApi.selfReviewPatch.mockResolvedValue({
+      review: {
+        correctness: { status: "pass", note: "fixes the finding." },
+        scopeCreep: { status: "pass", note: "minimal." },
+        regressions: { status: "concern", note: "no regression test exists." },
+        security: { status: "pass", note: "no concern." },
+        missingTests: { status: "fail", note: "a test should be added." },
+        unnecessaryComplexity: { status: "pass", note: "simple fix." },
+        architectureConsistency: { status: "pass", note: "matches existing style." },
+        raw: "raw response",
+      },
+      provider: "openai-compatible",
+      model: "gpt-test",
+      usage: { promptTokens: 10, completionTokens: 5 },
+      contextBundle: { targetId: "patch1", budgetTokens: 4000, selected: [], excluded: [], totalTokens: 0 },
+    });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+    await screen.findByText("src/big.ts:1");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Patches" }));
+    await screen.findByRole("button", { name: "AI self-review" });
+    await user.click(screen.getByRole("button", { name: "AI self-review" }));
+
+    await screen.findByText("No AI self-review generated yet.");
+    await user.click(screen.getByRole("button", { name: "Generate self-review" }));
+
+    expect(mockedApi.selfReviewPatch).toHaveBeenCalledWith("p1", "patch1");
+    expect(await screen.findByText("fixes the finding.")).toBeInTheDocument();
+    expect(screen.getByText("a test should be added.")).toBeInTheDocument();
+    // Self-review never touches the patch's own status/lifecycle buttons.
+    expect(screen.getByRole("button", { name: "Approve diff for apply" })).toBeInTheDocument();
+  });
+
+  it("shows a previously-generated self-review on toggle without a fresh generate call", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listFindings.mockResolvedValue({ findings: [FINDING], total: 1, latestRun: RUN });
+    mockedApi.listAiProviders.mockResolvedValue({ providers: [{ id: "p1", enabled: true }] });
+    mockedApi.listFindingPatches.mockResolvedValue({ patches: [PATCH_PROPOSED] });
+    mockedApi.getPatchSelfReview.mockResolvedValue({
+      review: {
+        correctness: { status: "pass", note: "stored note." },
+        scopeCreep: { status: null, note: null },
+        regressions: { status: null, note: null },
+        security: { status: null, note: null },
+        missingTests: { status: null, note: null },
+        unnecessaryComplexity: { status: null, note: null },
+        architectureConsistency: { status: null, note: null },
+        raw: "stored raw",
+      },
+      provider: "openai-compatible",
+      model: "gpt-test",
+      generatedAt: "2026-08-19T00:00:00.000Z",
+    });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+    await screen.findByText("src/big.ts:1");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Patches" }));
+    await screen.findByRole("button", { name: "AI self-review" });
+    await user.click(screen.getByRole("button", { name: "AI self-review" }));
+
+    expect(await screen.findByText("stored note.")).toBeInTheDocument();
+    expect(mockedApi.selfReviewPatch).not.toHaveBeenCalled();
   });
 
   const GEN_TEST_PENDING = {

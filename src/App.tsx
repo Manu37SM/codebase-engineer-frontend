@@ -8,6 +8,7 @@ import FindingsPage from "./pages/Findings";
 import TestsPage from "./pages/Tests";
 import AuditPage from "./pages/Audit";
 import AiModePage from "./pages/AiMode";
+import BillingPage from "./pages/Billing";
 
 export default function App() {
   return (
@@ -29,10 +30,7 @@ export default function App() {
         <Route path="/tests" element={<TestsPage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/ai-mode" element={<AiModePage />} />
-        <Route
-          path="/settings"
-          element={<PlaceholderPage title="Settings" />}
-        />
+        <Route path="/settings" element={<BillingPage />} />
       </Route>
     </Routes>
   );
