@@ -14,6 +14,8 @@ vi.mock("../lib/api", async () => {
     getCurrentUser: vi.fn(),
     listGitHubRepos: vi.fn(),
     importGitHubRepo: vi.fn(),
+    listDriveZipFiles: vi.fn(),
+    importDriveZipFile: vi.fn(),
   };
 });
 
@@ -23,6 +25,8 @@ const mockedApi = api as unknown as {
   getCurrentUser: ReturnType<typeof vi.fn>;
   listGitHubRepos: ReturnType<typeof vi.fn>;
   importGitHubRepo: ReturnType<typeof vi.fn>;
+  listDriveZipFiles: ReturnType<typeof vi.fn>;
+  importDriveZipFile: ReturnType<typeof vi.fn>;
 };
 
 const CONNECTED_USER = {
@@ -31,6 +35,16 @@ const CONNECTED_USER = {
   displayName: "Octo",
   createdAt: "now",
   githubConnected: true,
+  driveConnected: false,
+};
+
+const DRIVE_CONNECTED_USER = {
+  id: "u2",
+  email: "drive@example.com",
+  displayName: "Drive User",
+  createdAt: "now",
+  githubConnected: false,
+  driveConnected: true,
 };
 
 function renderForm(onRegistered = vi.fn()) {
@@ -47,6 +61,8 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     mockedApi.importProject.mockReset();
     mockedApi.listGitHubRepos.mockReset();
     mockedApi.importGitHubRepo.mockReset();
+    mockedApi.listDriveZipFiles.mockReset();
+    mockedApi.importDriveZipFile.mockReset();
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
   });
 
@@ -169,5 +185,57 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
     expect(await screen.findByText("Pick a repository to import.")).toBeInTheDocument();
     expect(mockedApi.importGitHubRepo).not.toHaveBeenCalled();
+  });
+
+  it("Google Drive mode: prompts to connect when the user hasn't linked Google", async () => {
+    renderForm();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Google Drive" }));
+
+    expect(await screen.findByText(/Connect your Google account/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect Google" })).toHaveAttribute(
+      "href",
+      "/api/v1/auth/google/start"
+    );
+    expect(mockedApi.listDriveZipFiles).not.toHaveBeenCalled();
+  });
+
+  it("Google Drive mode: lists real zip files and imports the picked one", async () => {
+    mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: DRIVE_CONNECTED_USER });
+    mockedApi.listDriveZipFiles.mockResolvedValue({
+      files: [
+        { id: "file-1", name: "my-app.zip", mimeType: "application/zip", modifiedTime: "now", size: "1024" },
+        { id: "file-2", name: "old-project.zip", mimeType: "application/zip", modifiedTime: "now", size: "2048" },
+      ],
+      truncated: false,
+    });
+    mockedApi.importDriveZipFile.mockResolvedValue({ project: { id: "p4" } });
+    const onRegistered = vi.fn();
+    renderForm(onRegistered);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Google Drive" }));
+
+    const select = await screen.findByLabelText("Zip file");
+    await user.selectOptions(select, "file-2");
+    await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+    expect(mockedApi.importDriveZipFile).toHaveBeenCalledWith("file-2", undefined);
+    expect(onRegistered).toHaveBeenCalledWith("p4");
+  });
+
+  it("Google Drive mode: requires a zip file to be picked before submitting", async () => {
+    mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: DRIVE_CONNECTED_USER });
+    mockedApi.listDriveZipFiles.mockResolvedValue({ files: [], truncated: false });
+    renderForm();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Google Drive" }));
+    await screen.findByText("No zip files found in your Drive.");
+    await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+    expect(await screen.findByText("Pick a zip file to import.")).toBeInTheDocument();
+    expect(mockedApi.importDriveZipFile).not.toHaveBeenCalled();
   });
 });

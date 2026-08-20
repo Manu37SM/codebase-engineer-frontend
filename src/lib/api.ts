@@ -589,6 +589,8 @@ export interface AuthUser {
   createdAt: string;
   /** Whether this user has a live GitHub OAuth token on file (Task #84) — lets the UI offer "browse your GitHub repos" without a failed round trip. */
   githubConnected: boolean;
+  /** Whether this user has a live Google OAuth token on file (Task #86) — lets the UI offer "browse your Google Drive" without a failed round trip. */
+  driveConnected: boolean;
 }
 
 export interface AuthMeResult {
@@ -658,5 +660,28 @@ export function importGitHubRepo(fullName: string, name?: string): Promise<{ pro
   return request("/api/v1/github/import", {
     method: "POST",
     body: JSON.stringify({ fullName, name }),
+  });
+}
+
+// --- Google Drive zip-file picker (Task #86) ---------------------------
+
+export interface DriveFileSummary {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime: string;
+  size: string | null;
+}
+
+/** Lists zip files in the signed-in user's Google Drive using the token stored from Google sign-in. 400s if Google isn't connected yet. */
+export function listDriveZipFiles(): Promise<{ files: DriveFileSummary[]; truncated: boolean }> {
+  return request("/api/v1/google-drive/zips");
+}
+
+/** Downloads (using the stored token) and registers a picked Drive zip file. Can take a while for a large archive — the caller should show a busy state. */
+export function importDriveZipFile(fileId: string, name?: string): Promise<{ project: Project }> {
+  return request("/api/v1/google-drive/import", {
+    method: "POST",
+    body: JSON.stringify({ fileId, name }),
   });
 }
