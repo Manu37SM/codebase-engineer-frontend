@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, registerAccount } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import Turnstile from "../components/Turnstile";
 
 /**
  * Task #91. Registering the FIRST account on a fresh, open-mode install
@@ -17,13 +18,17 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [providers, setProviders] = useState({ google: false, github: false });
+  const [providers, setProviders] = useState({ google: false, github: false, turnstile: false });
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   useEffect(() => {
     getAuthProviders()
       .then(setProviders)
-      .catch(() => setProviders({ google: false, github: false }));
+      .catch(() => setProviders({ google: false, github: false, turnstile: false }));
   }, []);
+
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  const turnstileRequired = providers.turnstile && Boolean(turnstileSiteKey);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -32,9 +37,18 @@ export default function RegisterPage() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    if (turnstileRequired && !turnstileToken) {
+      setError("Please complete the verification challenge.");
+      return;
+    }
     setSubmitting(true);
     try {
-      await registerAccount({ email: email.trim(), password, displayName: displayName.trim() || undefined });
+      await registerAccount({
+        email: email.trim(),
+        password,
+        displayName: displayName.trim() || undefined,
+        turnstileToken: turnstileToken ?? undefined,
+      });
       await refresh();
       navigate("/", { replace: true });
     } catch (err) {
@@ -89,10 +103,17 @@ export default function RegisterPage() {
             />
             <p className="mt-1 text-xs text-slate-400">At least 8 characters.</p>
           </div>
+          {turnstileRequired && (
+            <Turnstile
+              siteKey={turnstileSiteKey as string}
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(null)}
+            />
+          )}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (turnstileRequired && !turnstileToken)}
             className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
           >
             {submitting ? "Creating account…" : "Create account"}

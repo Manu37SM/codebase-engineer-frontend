@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import LoginPage from "./Login";
+import RegisterPage from "./Register";
 import { AuthProvider } from "../context/AuthContext";
 import * as api from "../lib/api";
 
@@ -11,7 +11,7 @@ vi.mock("../lib/api", async () => {
   return {
     ...actual,
     getCurrentUser: vi.fn(),
-    login: vi.fn(),
+    registerAccount: vi.fn(),
     getAuthProviders: vi.fn(),
   };
 });
@@ -28,7 +28,7 @@ vi.mock("../components/Turnstile", () => ({
 
 const mockedApi = api as unknown as {
   getCurrentUser: ReturnType<typeof vi.fn>;
-  login: ReturnType<typeof vi.fn>;
+  registerAccount: ReturnType<typeof vi.fn>;
   getAuthProviders: ReturnType<typeof vi.fn>;
 };
 
@@ -38,10 +38,10 @@ function Probe() {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
+    <MemoryRouter initialEntries={["/register"]}>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<Probe />} />
         </Routes>
       </AuthProvider>
@@ -49,12 +49,11 @@ function renderPage() {
   );
 }
 
-describe("LoginPage", () => {
+describe("RegisterPage", () => {
   beforeEach(() => {
-    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: true, user: null });
-    mockedApi.login.mockReset();
+    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
+    mockedApi.registerAccount.mockReset();
     mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false, turnstile: false });
-    // Deterministic regardless of whether frontend/.env sets a real key.
     vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "test-site-key");
   });
 
@@ -64,84 +63,95 @@ describe("LoginPage", () => {
 
   it("does not show OAuth buttons when no provider is configured", async () => {
     renderPage();
-    await screen.findByRole("heading", { name: "Sign in" });
+    await screen.findByRole("heading", { name: "Create an account" });
     expect(screen.queryByText("Continue with Google")).not.toBeInTheDocument();
     expect(screen.queryByText("Continue with GitHub")).not.toBeInTheDocument();
   });
 
-  it("shows only the configured OAuth provider's button", async () => {
-    mockedApi.getAuthProviders.mockResolvedValue({ google: true, github: false, turnstile: false });
+  it("rejects a password shorter than 8 characters without calling the API", async () => {
     renderPage();
-    expect(await screen.findByText("Continue with Google")).toBeInTheDocument();
-    expect(screen.queryByText("Continue with GitHub")).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "a@b.com");
+    await user.type(screen.getByLabelText("Password"), "short");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("Password must be at least 8 characters.")).toBeInTheDocument();
+    expect(mockedApi.registerAccount).not.toHaveBeenCalled();
   });
 
-  it("logs in and navigates to the workspace on success", async () => {
-    mockedApi.login.mockResolvedValue({ user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" } });
+  it("registers and navigates to the workspace on success", async () => {
+    mockedApi.registerAccount.mockResolvedValue({
+      user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" },
+    });
     mockedApi.getCurrentUser
-      .mockResolvedValueOnce({ authRequired: true, user: null })
+      .mockResolvedValueOnce({ authRequired: false, user: null })
       .mockResolvedValueOnce({ authRequired: true, user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" } });
 
     renderPage();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Email"), "a@b.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password-123");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(mockedApi.login).toHaveBeenCalledWith({
+    expect(mockedApi.registerAccount).toHaveBeenCalledWith({
       email: "a@b.com",
       password: "a-real-password-123",
+      displayName: undefined,
       turnstileToken: undefined,
     });
     expect(await screen.findByText("Landed on workspace")).toBeInTheDocument();
   });
 
-  it("collects a Turnstile token and includes it in the login request when Turnstile is enabled", async () => {
+  it("collects a Turnstile token and includes it in the register request when Turnstile is enabled", async () => {
     mockedApi.getAuthProviders.mockResolvedValue({ google: false, github: false, turnstile: true });
-    mockedApi.login.mockResolvedValue({ user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" } });
+    mockedApi.registerAccount.mockResolvedValue({
+      user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" },
+    });
 
     renderPage();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Email"), "a@b.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password-123");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(mockedApi.login).toHaveBeenCalledWith({
-      email: "a@b.com",
-      password: "a-real-password-123",
-      turnstileToken: "test-token",
-    });
+    expect(mockedApi.registerAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ turnstileToken: "test-token" })
+    );
   });
 
   it("submits without a token when Turnstile is reported enabled but no site key is configured locally", async () => {
+    // Misconfigured deployment: backend has TURNSTILE_SECRET_KEY set but
+    // this build has no VITE_TURNSTILE_SITE_KEY, so the widget can't
+    // render. The page still submits — the backend's existing fail-closed
+    // check (missing token -> 400) is what actually protects it.
     vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "");
     mockedApi.getAuthProviders.mockResolvedValue({ google: false, github: false, turnstile: true });
-    mockedApi.login.mockResolvedValue({ user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" } });
+    mockedApi.registerAccount.mockResolvedValue({
+      user: { id: "u1", email: "a@b.com", displayName: null, createdAt: "now" },
+    });
 
     renderPage();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Email"), "a@b.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password-123");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(mockedApi.login).toHaveBeenCalledWith({
-      email: "a@b.com",
-      password: "a-real-password-123",
-      turnstileToken: undefined,
-    });
+    expect(mockedApi.registerAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ turnstileToken: undefined })
+    );
   });
 
-  it("shows the error message on a failed login", async () => {
-    mockedApi.login.mockRejectedValue(new api.ApiError("Invalid email or password.", 401));
+  it("shows the error message on a failed registration", async () => {
+    mockedApi.registerAccount.mockRejectedValue(new api.ApiError("Email already in use.", 409));
 
     renderPage();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Email"), "a@b.com");
-    await user.type(screen.getByLabelText("Password"), "wrong");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.type(screen.getByLabelText("Password"), "a-real-password-123");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Invalid email or password.")).toBeInTheDocument();
+      expect(screen.getByText("Email already in use.")).toBeInTheDocument();
     });
   });
 });

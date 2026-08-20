@@ -631,8 +631,8 @@ export function getGitHubSignInUrl(): string {
   return "/api/v1/auth/github/start";
 }
 
-/** Which OAuth providers are actually configured server-side — lets the login/register pages hide buttons that would otherwise 404. */
-export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
+/** Which OAuth providers (and Turnstile bot-protection) are actually configured server-side — lets the login/register pages hide buttons/widgets that would otherwise 404 or always fail. */
+export function getAuthProviders(): Promise<{ google: boolean; github: boolean; turnstile: boolean }> {
   return request("/api/v1/auth/providers");
 }
 

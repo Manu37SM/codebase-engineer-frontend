@@ -36,7 +36,7 @@ describe("App shell", () => {
   beforeEach(() => {
     mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [] });
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
-    mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false });
+    mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false, turnstile: false });
   });
 
   it("renders the top-level navigation sections without crashing", async () => {
