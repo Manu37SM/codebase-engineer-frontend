@@ -2,8 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, login } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import TurnstileWidget from "../components/TurnstileWidget";
-import { TURNSTILE_SITE_KEY } from "../lib/turnstile";
+import Turnstile from "../components/Turnstile";
+
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
 
 /**
  * Task #91. Only ever rendered when `authRequired` is true (App.tsx keeps
@@ -74,7 +75,13 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <TurnstileWidget onToken={setTurnstileToken} />
+          {TURNSTILE_SITE_KEY && (
+            <Turnstile
+              siteKey={TURNSTILE_SITE_KEY}
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(null)}
+            />
+          )}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"

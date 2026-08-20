@@ -2,8 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, registerAccount } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import TurnstileWidget from "../components/TurnstileWidget";
-import { TURNSTILE_SITE_KEY } from "../lib/turnstile";
+import Turnstile from "../components/Turnstile";
+
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
 
 /**
  * Task #91. Registering the FIRST account on a fresh, open-mode install
@@ -97,7 +98,13 @@ export default function RegisterPage() {
             />
             <p className="mt-1 text-xs text-slate-400">At least 8 characters.</p>
           </div>
-          <TurnstileWidget onToken={setTurnstileToken} />
+          {TURNSTILE_SITE_KEY && (
+            <Turnstile
+              siteKey={TURNSTILE_SITE_KEY}
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(null)}
+            />
+          )}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
