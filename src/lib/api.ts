@@ -107,6 +107,18 @@ export function createProject(name: string, rootPath: string): Promise<{ project
   });
 }
 
+/** Registers a project by cloning a remote git URL or downloading+extracting a zip URL (Task #85). Can take a while for a large repo/archive — the caller should show a busy state. */
+export function importProject(
+  name: string,
+  sourceType: "git" | "zip",
+  sourceUrl: string
+): Promise<{ project: Project }> {
+  return request("/api/v1/projects/import", {
+    method: "POST",
+    body: JSON.stringify({ name, sourceType, sourceUrl }),
+  });
+}
+
 export function getProject(
   id: string
 ): Promise<{ project: Project; latestSnapshot: RepositorySnapshot | null }> {
