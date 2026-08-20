@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import DashboardPage from "./Dashboard";
 import { ProjectProvider } from "../context/ProjectContext";
+import { AuthProvider } from "../context/AuthContext";
 import * as api from "../lib/api";
 
 vi.mock("../lib/api", async () => {
@@ -20,6 +21,7 @@ vi.mock("../lib/api", async () => {
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
     deleteProject: vi.fn(),
+    getCurrentUser: vi.fn(),
   };
 });
 
@@ -35,6 +37,7 @@ const mockedApi = api as unknown as {
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
   deleteProject: ReturnType<typeof vi.fn>;
+  getCurrentUser: ReturnType<typeof vi.fn>;
 };
 
 const NON_GIT_RESULT = {
@@ -63,15 +66,18 @@ const PROJECT = { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at
 function renderPage() {
   return render(
     <MemoryRouter>
-      <ProjectProvider>
-        <DashboardPage />
-      </ProjectProvider>
+      <AuthProvider>
+        <ProjectProvider>
+          <DashboardPage />
+        </ProjectProvider>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
 
 describe("DashboardPage", () => {
   beforeEach(() => {
+    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     mockedApi.listProjects.mockReset();
     mockedApi.getProject.mockReset();
     mockedApi.listFiles.mockReset();

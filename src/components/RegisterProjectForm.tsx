@@ -1,5 +1,14 @@
-import { FormEvent, useState } from "react";
-import { createProject, importProject, ApiError } from "../lib/api";
+import { FormEvent, useEffect, useState } from "react";
+import {
+  createProject,
+  importProject,
+  importGitHubRepo,
+  listGitHubRepos,
+  getGitHubSignInUrl,
+  ApiError,
+  type GitHubRepoSummary,
+} from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
 interface RegisterProjectFormProps {
   /** Called after a successful register, with the new project's id — callers decide what to do next (e.g. select it, refresh a list). */
@@ -7,18 +16,29 @@ interface RegisterProjectFormProps {
   className?: string;
 }
 
-type Mode = "local" | "git" | "zip";
+type Mode = "local" | "git" | "zip" | "github";
+
+const MODE_LABELS: Record<Mode, string> = {
+  local: "Local path",
+  git: "Git URL",
+  zip: "Zip URL",
+  github: "GitHub",
+};
 
 /**
  * The "register a repository" form, extracted out of Repositories.tsx
  * (Task #93) so the Dashboard's empty state can offer the same
- * register-right-here flow. Task #85 added two more sources beyond a
- * local path — a remote git URL (cloned onto this machine) and a plain
- * zip/download URL (downloaded and extracted onto this machine) — still
- * local-first in both cases: nothing is ever stored anywhere but this
- * machine's own data directory.
+ * register-right-here flow. Task #85 added a remote git URL and a plain
+ * zip/download URL as sources. Task #84 adds a fourth: browse the
+ * repositories of whichever GitHub account the user signed in with
+ * (Task #83) and clone one directly — no need to hand-type a URL, and it
+ * works for private repos since the stored OAuth token travels with the
+ * clone request server-side. All four sources are still local-first: the
+ * result always ends up as a plain directory on this machine's own data
+ * directory, registered exactly like a manually-picked local path.
  */
 export default function RegisterProjectForm({ onRegistered, className }: RegisterProjectFormProps) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<Mode>("local");
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
@@ -26,10 +46,29 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const [repos, setRepos] = useState<GitHubRepoSummary[] | null>(null);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [reposError, setReposError] = useState<string | null>(null);
+  const [repoFilter, setRepoFilter] = useState("");
+  const [selectedRepo, setSelectedRepo] = useState<string>("");
+
+  const githubConnected = Boolean(user?.githubConnected);
+
+  useEffect(() => {
+    if (mode !== "github" || !githubConnected || repos !== null || reposLoading) return;
+    setReposLoading(true);
+    setReposError(null);
+    listGitHubRepos()
+      .then((result) => setRepos(result.repos))
+      .catch((err) => setReposError(err instanceof ApiError ? err.message : "Failed to load GitHub repositories."))
+      .finally(() => setReposLoading(false));
+  }, [mode, githubConnected, repos, reposLoading]);
+
   function reset() {
     setName("");
     setRootPath("");
     setSourceUrl("");
+    setSelectedRepo("");
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -39,6 +78,11 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
     if (mode === "local") {
       if (!name.trim() || !rootPath.trim()) {
         setFormError("Both a name and an absolute repository path are required.");
+        return;
+      }
+    } else if (mode === "github") {
+      if (!selectedRepo) {
+        setFormError("Pick a repository to import.");
         return;
       }
     } else if (!name.trim() || !sourceUrl.trim()) {
@@ -51,7 +95,9 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       const { project } =
         mode === "local"
           ? await createProject(name.trim(), rootPath.trim())
-          : await importProject(name.trim(), mode, sourceUrl.trim());
+          : mode === "github"
+            ? await importGitHubRepo(selectedRepo, name.trim() || undefined)
+            : await importProject(name.trim(), mode, sourceUrl.trim());
       reset();
       await onRegistered(project.id);
     } catch (err) {
@@ -60,6 +106,9 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       setSubmitting(false);
     }
   }
+
+  const filteredRepos =
+    repos?.filter((r) => r.fullName.toLowerCase().includes(repoFilter.trim().toLowerCase())) ?? [];
 
   return (
     <form
@@ -70,7 +119,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       }
     >
       <div className="flex w-full gap-1 text-xs">
-        {(["local", "git", "zip"] as const).map((m) => (
+        {(["local", "git", "zip", "github"] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -84,57 +133,134 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
             }`}
           >
-            {m === "local" ? "Local path" : m === "git" ? "Git URL" : "Zip URL"}
+            {MODE_LABELS[m]}
           </button>
         ))}
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-name">
-          Name
-        </label>
-        <input
-          id="register-project-name"
-          className="mt-1 w-48 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="my-app"
-        />
-      </div>
-
-      {mode === "local" ? (
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-path">
-            Absolute path
-          </label>
-          <input
-            id="register-project-path"
-            className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            value={rootPath}
-            onChange={(e) => setRootPath(e.target.value)}
-            placeholder="/home/me/projects/my-app"
-          />
-        </div>
+      {mode === "github" ? (
+        !githubConnected ? (
+          <div className="w-full rounded border border-dashed border-slate-300 p-3 text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
+            Connect your GitHub account to browse and import your repos directly (including private ones).
+            <a
+              href={getGitHubSignInUrl()}
+              className="ml-2 inline-block rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white dark:bg-slate-100 dark:text-slate-900"
+            >
+              Connect GitHub
+            </a>
+          </div>
+        ) : (
+          <>
+            <div className="w-full">
+              <label
+                className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                htmlFor="register-project-github-filter"
+              >
+                Filter repositories
+              </label>
+              <input
+                id="register-project-github-filter"
+                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                value={repoFilter}
+                onChange={(e) => setRepoFilter(e.target.value)}
+                placeholder="owner/repo"
+              />
+            </div>
+            <div className="w-full">
+              <label
+                className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                htmlFor="register-project-github-repo"
+              >
+                Repository
+              </label>
+              {reposLoading ? (
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading your repositories…</p>
+              ) : reposError ? (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{reposError}</p>
+              ) : (
+                <select
+                  id="register-project-github-repo"
+                  className="mt-1 w-96 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                  value={selectedRepo}
+                  onChange={(e) => setSelectedRepo(e.target.value)}
+                >
+                  <option value="">Select a repository…</option>
+                  {filteredRepos.map((r) => (
+                    <option key={r.id} value={r.fullName}>
+                      {r.fullName}
+                      {r.private ? " (private)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <label
+                className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                htmlFor="register-project-name"
+              >
+                Name (optional)
+              </label>
+              <input
+                id="register-project-name"
+                className="mt-1 w-48 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="defaults to repo name"
+              />
+            </div>
+          </>
+        )
       ) : (
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-url">
-            {mode === "git" ? "Git URL" : "Zip download URL"}
-          </label>
-          <input
-            id="register-project-url"
-            className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder={
-              mode === "git" ? "https://github.com/user/repo.git" : "https://example.com/repo/archive.zip"
-            }
-          />
-        </div>
+        <>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-name">
+              Name
+            </label>
+            <input
+              id="register-project-name"
+              className="mt-1 w-48 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="my-app"
+            />
+          </div>
+
+          {mode === "local" ? (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-path">
+                Absolute path
+              </label>
+              <input
+                id="register-project-path"
+                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                value={rootPath}
+                onChange={(e) => setRootPath(e.target.value)}
+                placeholder="/home/me/projects/my-app"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-url">
+                {mode === "git" ? "Git URL" : "Zip download URL"}
+              </label>
+              <input
+                id="register-project-url"
+                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder={
+                  mode === "git" ? "https://github.com/user/repo.git" : "https://example.com/repo/archive.zip"
+                }
+              />
+            </div>
+          )}
+        </>
       )}
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || (mode === "github" && !githubConnected)}
         className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
       >
         {submitting
@@ -142,14 +268,20 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
             ? "Registering…"
             : mode === "git"
               ? "Cloning…"
-              : "Downloading…"
+              : mode === "github"
+                ? "Cloning…"
+                : "Downloading…"
           : "Register & continue"}
       </button>
       {formError && <p className="w-full text-sm text-red-600 dark:text-red-400">{formError}</p>}
-      {mode !== "local" && !formError && (
+      {(mode === "git" || mode === "zip" || mode === "github") && !formError && (
         <p className="w-full text-xs text-slate-400">
-          {mode === "git" ? "Cloning a large repository" : "Downloading and extracting a large archive"} can take a
-          minute — everything stays on this machine, nothing is uploaded anywhere.
+          {mode === "git"
+            ? "Cloning a large repository"
+            : mode === "zip"
+              ? "Downloading and extracting a large archive"
+              : "Cloning a large repository"}{" "}
+          can take a minute — everything stays on this machine, nothing is uploaded anywhere.
         </p>
       )}
     </form>

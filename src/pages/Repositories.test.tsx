@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import RepositoriesPage from "./Repositories";
 import { ProjectProvider } from "../context/ProjectContext";
+import { AuthProvider } from "../context/AuthContext";
 import * as api from "../lib/api";
 
 vi.mock("../lib/api", async () => {
@@ -15,6 +16,7 @@ vi.mock("../lib/api", async () => {
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
     deleteProject: vi.fn(),
+    getCurrentUser: vi.fn(),
   };
 });
 
@@ -24,20 +26,24 @@ const mockedApi = api as unknown as {
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
   deleteProject: ReturnType<typeof vi.fn>;
+  getCurrentUser: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
   return render(
     <MemoryRouter>
-      <ProjectProvider>
-        <RepositoriesPage />
-      </ProjectProvider>
+      <AuthProvider>
+        <ProjectProvider>
+          <RepositoriesPage />
+        </ProjectProvider>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
 
 describe("RepositoriesPage", () => {
   beforeEach(() => {
+    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [] });
     mockedApi.createProject.mockReset();
     mockedApi.discoverProject.mockReset();

@@ -540,6 +540,8 @@ export interface AuthUser {
   email: string;
   displayName: string | null;
   createdAt: string;
+  /** Whether this user has a live GitHub OAuth token on file (Task #84) — lets the UI offer "browse your GitHub repos" without a failed round trip. */
+  githubConnected: boolean;
 }
 
 export interface AuthMeResult {
@@ -583,4 +585,31 @@ export function getGitHubSignInUrl(): string {
 /** Which OAuth providers are actually configured server-side — lets the login/register pages hide buttons that would otherwise 404. */
 export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
   return request("/api/v1/auth/providers");
+}
+
+// --- GitHub repo browser + clone-to-register (Task #84) ---------------
+
+export interface GitHubRepoSummary {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  htmlUrl: string;
+  description: string | null;
+  defaultBranch: string;
+  updatedAt: string;
+  fork: boolean;
+}
+
+/** Lists the signed-in user's GitHub repos using the token stored from GitHub sign-in. 400s if GitHub isn't connected yet. */
+export function listGitHubRepos(): Promise<{ repos: GitHubRepoSummary[]; truncated: boolean }> {
+  return request("/api/v1/github/repos");
+}
+
+/** Clones (using the stored token, so private repos work too) and registers a picked GitHub repo. Can take a while for a large repo — the caller should show a busy state. */
+export function importGitHubRepo(fullName: string, name?: string): Promise<{ project: Project }> {
+  return request("/api/v1/github/import", {
+    method: "POST",
+    body: JSON.stringify({ fullName, name }),
+  });
 }
