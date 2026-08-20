@@ -45,6 +45,6 @@ describe("App shell", () => {
       expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
     }
 
-    expect(await screen.findByText(/No repository selected yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
   });
 });

@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
-import { getAnalysisHistory, getDependencies, getGitAnalysis, getProject, listFiles, listFindings } from "../lib/api";
+import {
+  ApiError,
+  discoverProject,
+  getAnalysisHistory,
+  getDependencies,
+  getGitAnalysis,
+  getProject,
+  indexProject,
+  listFiles,
+  listFindings,
+} from "../lib/api";
 import {
   parseSnapshot,
   type AnalysisRun,
@@ -16,9 +26,20 @@ import {
   LanguageBreakdownChart,
   SeverityBreakdownChart,
 } from "../components/Charts";
+import ActivityIndicator from "../components/ActivityIndicator";
+import RegisterProjectForm from "../components/RegisterProjectForm";
 
 export default function DashboardPage() {
-  const { selectedProject } = useProjects();
+  const {
+    projects,
+    loading: projectsLoading,
+    selectedProject,
+    selectProject,
+    refresh: refreshProjects,
+  } = useProjects();
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanVersion, setScanVersion] = useState(0);
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [fileTotals, setFileTotals] = useState<{ total: number; test: number } | null>(null);
   const [gitAnalysis, setGitAnalysis] = useState<GitAnalysisResult | null>(null);
@@ -118,19 +139,95 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProject]);
+    // `scanVersion` is a deliberate extra dependency, not read inside the
+    // effect — it's bumped by handleScanNow() below purely to force this
+    // whole fetch to re-run after an inline scan completes, without
+    // needing `selectedProject` itself to change identity.
+  }, [selectedProject, scanVersion]);
 
+  async function handleScanNow() {
+    if (!selectedProject) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      await discoverProject(selectedProject.id);
+      await indexProject(selectedProject.id);
+      await refreshProjects();
+      setScanVersion((v) => v + 1);
+    } catch (err) {
+      setScanError(err instanceof ApiError ? err.message : "Scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  // No project selected yet — the app's very first screen for a new
+  // install. Task #93: this used to be a single sentence pointing at the
+  // Repositories page in the sidebar; now the same actions happen right
+  // here, so a first-time user never has to go hunting in the nav to get
+  // started.
   if (!selectedProject) {
+    if (projectsLoading) {
+      return (
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dashboard</h1>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+        </div>
+      );
+    }
+
+    if (projects.length === 0) {
+      return (
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Welcome to Codebase Engineer</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+            Register a local repository to get started — nothing is uploaded, everything runs
+            against the path on this machine. Once it's registered, scan it from here to see
+            findings, dependencies, and Git activity.
+          </p>
+          <div className="mt-4 max-w-3xl">
+            <RegisterProjectForm
+              onRegistered={(id) => selectProject(id)}
+              className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+            Prefer to manage repositories in a dedicated list?{" "}
+            <Link to="/repositories" className="underline">
+              Open Repositories
+            </Link>
+            .
+          </p>
+        </div>
+      );
+    }
+
+    // Repositories already exist — offer a one-click picker instead of a
+    // plain link, so returning to a multi-project setup doesn't require a
+    // detour through the sidebar either.
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-500">
-          No repository selected yet. Go to{" "}
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Choose a repository</h1>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          Select a repository to see its dashboard, or{" "}
           <Link to="/repositories" className="underline">
-            Repositories
-          </Link>{" "}
-          to register and scan one.
+            register a new one
+          </Link>
+          .
         </p>
+        <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {projects.map((project) => (
+            <li key={project.id}>
+              <button
+                onClick={() => selectProject(project.id)}
+                className="w-full rounded border border-slate-200 bg-white p-4 text-left hover:border-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500"
+              >
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</div>
+                <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{project.root_path}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
@@ -138,8 +235,8 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-2 text-sm text-slate-500">Loading…</p>
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
       </div>
     );
   }
@@ -147,8 +244,8 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       </div>
     );
   }
@@ -156,15 +253,24 @@ export default function DashboardPage() {
   if (!snapshot) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">{selectedProject.name}</h1>
-        <p className="mt-1 text-xs text-slate-500">{selectedProject.root_path}</p>
-        <p className="mt-4 text-sm text-slate-500">
-          This repository hasn't been scanned yet. Go to{" "}
-          <Link to="/repositories" className="underline">
-            Repositories
-          </Link>{" "}
-          and click Scan.
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+          This repository hasn't been scanned yet.
         </p>
+        <button
+          onClick={handleScanNow}
+          disabled={scanning}
+          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+        >
+          {scanning ? "Scanning…" : "Scan now"}
+        </button>
+        {scanning && (
+          <div className="mt-2">
+            <ActivityIndicator label="Discovering & indexing files" />
+          </div>
+        )}
+        {scanError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{scanError}</p>}
       </div>
     );
   }
@@ -173,8 +279,33 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-slate-900">{selectedProject.name}</h1>
-      <p className="mt-1 text-xs text-slate-500">{selectedProject.root_path}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleScanNow}
+            disabled={scanning}
+            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {scanning ? "Rescanning…" : "Rescan"}
+          </button>
+          <Link
+            to="/findings"
+            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            View findings
+          </Link>
+        </div>
+      </div>
+      {scanning && (
+        <div className="mt-2">
+          <ActivityIndicator label="Discovering & indexing files" />
+        </div>
+      )}
+      {scanError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{scanError}</p>}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Total files" value={fileTotals?.total ?? "—"} />

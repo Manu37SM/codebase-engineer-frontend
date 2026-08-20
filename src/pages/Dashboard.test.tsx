@@ -16,6 +16,9 @@ vi.mock("../lib/api", async () => {
     getDependencies: vi.fn(),
     listFindings: vi.fn(),
     getAnalysisHistory: vi.fn(),
+    createProject: vi.fn(),
+    discoverProject: vi.fn(),
+    indexProject: vi.fn(),
   };
 });
 
@@ -27,6 +30,9 @@ const mockedApi = api as unknown as {
   getDependencies: ReturnType<typeof vi.fn>;
   listFindings: ReturnType<typeof vi.fn>;
   getAnalysisHistory: ReturnType<typeof vi.fn>;
+  createProject: ReturnType<typeof vi.fn>;
+  discoverProject: ReturnType<typeof vi.fn>;
+  indexProject: ReturnType<typeof vi.fn>;
 };
 
 const NON_GIT_RESULT = {
@@ -75,13 +81,30 @@ describe("DashboardPage", () => {
     mockedApi.listFindings.mockResolvedValue({ findings: [], total: 0, latestRun: null });
     mockedApi.getAnalysisHistory.mockReset();
     mockedApi.getAnalysisHistory.mockResolvedValue({ runs: [] });
+    mockedApi.createProject.mockReset();
+    mockedApi.discoverProject.mockReset();
+    mockedApi.indexProject.mockReset();
     window.localStorage.clear();
   });
 
   it("prompts to register a repository when none is selected", async () => {
     mockedApi.listProjects.mockResolvedValue({ projects: [] });
     renderPage();
-    expect(await screen.findByText(/No repository selected yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Absolute path")).toBeInTheDocument();
+  });
+
+  it("offers a one-click picker when repositories exist but none is selected", async () => {
+    mockedApi.listProjects.mockResolvedValue({
+      projects: [
+        PROJECT,
+        { id: "p2", name: "other-app", root_path: "/tmp/other-app", created_at: "now" },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("Choose a repository")).toBeInTheDocument();
+    expect(screen.getByText(PROJECT.name)).toBeInTheDocument();
+    expect(screen.getByText("other-app")).toBeInTheDocument();
   });
 
   it("prompts to scan when the selected repository has no snapshot yet", async () => {
@@ -94,6 +117,25 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/hasn't been scanned yet/)).toBeInTheDocument();
     });
+  });
+
+  it("scans an unscanned repository right from the dashboard, without leaving the page", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.getProject.mockResolvedValue({ project: PROJECT, latestSnapshot: null });
+    mockedApi.listFiles.mockResolvedValue({ files: [], total: 0 });
+    mockedApi.discoverProject.mockResolvedValue({});
+    mockedApi.indexProject.mockResolvedValue({ totalFiles: 3, testFiles: 1, generatedFiles: 0, indexedAt: "now" });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    const { default: userEvent } = await import("@testing-library/user-event");
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/hasn't been scanned yet/)).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Scan now" }));
+
+    await waitFor(() => expect(mockedApi.discoverProject).toHaveBeenCalledWith("p1"));
+    expect(mockedApi.indexProject).toHaveBeenCalledWith("p1");
   });
 
   it("renders a full dashboard summary from a snapshot", async () => {

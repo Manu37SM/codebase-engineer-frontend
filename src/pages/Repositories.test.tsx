@@ -62,7 +62,7 @@ describe("RepositoriesPage", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Name"), "my-app");
     await user.type(screen.getByLabelText("Absolute path"), "/tmp/my-app");
-    await user.click(screen.getByRole("button", { name: "Register" }));
+    await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
     expect(mockedApi.createProject).toHaveBeenCalledWith("my-app", "/tmp/my-app");
     expect(await screen.findByText("my-app")).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("RepositoriesPage", () => {
     await screen.findByText("No repositories registered yet.");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Register" }));
+    await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
     expect(
       await screen.findByText("Both a name and an absolute repository path are required.")

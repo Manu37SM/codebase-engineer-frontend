@@ -1,37 +1,18 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useProjects } from "../context/ProjectContext";
-import { createProject, discoverProject, indexProject } from "../lib/api";
+import { discoverProject, indexProject } from "../lib/api";
 import { ApiError } from "../lib/api";
 import ActivityIndicator from "../components/ActivityIndicator";
+import RegisterProjectForm from "../components/RegisterProjectForm";
 
 export default function RepositoriesPage() {
   const { projects, loading, error, selectedProjectId, selectProject, refresh } = useProjects();
-  const [name, setName] = useState("");
-  const [rootPath, setRootPath] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  async function handleRegister(e: FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    if (!name.trim() || !rootPath.trim()) {
-      setFormError("Both a name and an absolute repository path are required.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { project } = await createProject(name.trim(), rootPath.trim());
-      setName("");
-      setRootPath("");
-      await refresh();
-      selectProject(project.id);
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to register repository.");
-    } finally {
-      setSubmitting(false);
-    }
+  async function handleRegistered(projectId: string) {
+    await refresh();
+    selectProject(projectId);
   }
 
   async function handleDiscoverAndIndex(projectId: string) {
@@ -59,43 +40,7 @@ export default function RepositoriesPage() {
         discovery and indexing runs against the path on this machine.
       </p>
 
-      <form
-        onSubmit={handleRegister}
-        className="mt-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4"
-      >
-        <div>
-          <label className="block text-xs font-medium text-slate-600" htmlFor="repo-name">
-            Name
-          </label>
-          <input
-            id="repo-name"
-            className="mt-1 w-48 rounded border border-slate-300 px-2 py-1 text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="my-app"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600" htmlFor="repo-path">
-            Absolute path
-          </label>
-          <input
-            id="repo-path"
-            className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm"
-            value={rootPath}
-            onChange={(e) => setRootPath(e.target.value)}
-            placeholder="/home/me/projects/my-app"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {submitting ? "Registering…" : "Register"}
-        </button>
-        {formError && <p className="w-full text-sm text-red-600">{formError}</p>}
-      </form>
+      <RegisterProjectForm onRegistered={handleRegistered} className="mt-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4" />
 
       {actionMessage && <p className="mt-3 text-sm text-slate-600">{actionMessage}</p>}
 
