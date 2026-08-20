@@ -515,3 +515,60 @@ export function getBillingStatus(): Promise<BillingStatus> {
 export function createBillingCheckout(): Promise<CheckoutOrder> {
   return request("/api/v1/billing/checkout", { method: "POST" });
 }
+
+// Auth (Task #91) — local accounts + session cookie. `getCurrentUser`
+// (`GET /api/v1/auth/me`) is the one endpoint that's ALWAYS reachable
+// (see backend/src/auth/guard.ts's public-path allowlist), so it's safe
+// to call before knowing whether auth is even turned on for this
+// instance — `authRequired: false` means every other route already works
+// with no session at all (open/legacy mode, see docs/AUTH.md §1).
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  createdAt: string;
+}
+
+export interface AuthMeResult {
+  authRequired: boolean;
+  user: AuthUser | null;
+}
+
+export function getCurrentUser(): Promise<AuthMeResult> {
+  return request("/api/v1/auth/me");
+}
+
+export function registerAccount(input: {
+  email: string;
+  password: string;
+  displayName?: string;
+  turnstileToken?: string;
+}): Promise<{ user: AuthUser }> {
+  return request("/api/v1/auth/register", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function login(input: {
+  email: string;
+  password: string;
+  turnstileToken?: string;
+}): Promise<{ user: AuthUser }> {
+  return request("/api/v1/auth/login", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return request("/api/v1/auth/logout", { method: "POST" });
+}
+
+/** Relative paths, not `request()` calls — these are real browser navigations to the backend's OAuth `/start` routes, not JSON API calls. */
+export function getGoogleSignInUrl(): string {
+  return "/api/v1/auth/google/start";
+}
+export function getGitHubSignInUrl(): string {
+  return "/api/v1/auth/github/start";
+}
+
+/** Which OAuth providers are actually configured server-side — lets the login/register pages hide buttons that would otherwise 404. */
+export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
+  return request("/api/v1/auth/providers");
+}

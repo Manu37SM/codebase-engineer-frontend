@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import CommandPalette, { OPEN_EVENT } from "./CommandPalette";
 
 const NAV_SECTIONS = [
@@ -16,7 +17,14 @@ const NAV_SECTIONS = [
 
 export default function NavShell() {
   const { resolvedTheme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const isDark = resolvedTheme === "dark";
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -65,6 +73,19 @@ export default function NavShell() {
             </li>
           ))}
         </ul>
+        {user && (
+          <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-800">
+            <div className="truncate px-2 text-xs text-slate-500 dark:text-slate-400" title={user.email}>
+              {user.displayName || user.email}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="mt-1 w-full rounded px-2 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
       </nav>
       <main className="flex-1 p-6">
         <Outlet />
