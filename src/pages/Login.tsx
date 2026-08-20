@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, login } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import Turnstile from "../components/Turnstile";
+import TurnstileWidget from "../components/TurnstileWidget";
+import { TURNSTILE_SITE_KEY } from "../lib/turnstile";
 
 /**
  * Task #91. Only ever rendered when `authRequired` is true (App.tsx keeps
@@ -16,25 +17,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [providers, setProviders] = useState({ google: false, github: false, turnstile: false });
+  const [providers, setProviders] = useState({ google: false, github: false });
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   useEffect(() => {
     getAuthProviders()
       .then(setProviders)
-      .catch(() => setProviders({ google: false, github: false, turnstile: false }));
+      .catch(() => setProviders({ google: false, github: false }));
   }, []);
-
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-  const turnstileRequired = providers.turnstile && Boolean(turnstileSiteKey);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (turnstileRequired && !turnstileToken) {
-      setError("Please complete the verification challenge.");
-      return;
-    }
     setSubmitting(true);
     try {
       await login({ email: email.trim(), password, turnstileToken: turnstileToken ?? undefined });
@@ -80,17 +74,11 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {turnstileRequired && (
-            <Turnstile
-              siteKey={turnstileSiteKey as string}
-              onVerify={setTurnstileToken}
-              onExpire={() => setTurnstileToken(null)}
-            />
-          )}
+          <TurnstileWidget onToken={setTurnstileToken} />
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={submitting || (turnstileRequired && !turnstileToken)}
+            disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)}
             className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
           >
             {submitting ? "Signing in…" : "Sign in"}
