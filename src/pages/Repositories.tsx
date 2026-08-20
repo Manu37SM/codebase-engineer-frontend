@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useProjects } from "../context/ProjectContext";
-import { discoverProject, indexProject } from "../lib/api";
+import { deleteProject, discoverProject, indexProject } from "../lib/api";
 import { ApiError } from "../lib/api";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
@@ -9,6 +9,8 @@ export default function RepositoriesPage() {
   const { projects, loading, error, selectedProjectId, selectProject, refresh } = useProjects();
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   async function handleRegistered(projectId: string) {
     await refresh();
@@ -32,6 +34,22 @@ export default function RepositoriesPage() {
     }
   }
 
+  async function handleRemove(projectId: string) {
+    setRemovingId(projectId);
+    setActionMessage(null);
+    try {
+      await deleteProject(projectId);
+      if (selectedProjectId === projectId) selectProject(null);
+      await refresh();
+      setActionMessage("Repository removed from the workspace. Its actual files were not touched.");
+    } catch (err) {
+      setActionMessage(err instanceof ApiError ? err.message : "Failed to remove repository.");
+    } finally {
+      setRemovingId(null);
+      setConfirmRemoveId(null);
+    }
+  }
+
   return (
     <div>
       <h1 className="text-lg font-semibold text-slate-900">Repositories</h1>
@@ -49,6 +67,12 @@ export default function RepositoriesPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
         {!loading && !error && projects.length === 0 && (
           <p className="text-sm text-slate-500">No repositories registered yet.</p>
+        )}
+        {!loading && !error && projects.length > 0 && (
+          <p className="mb-2 text-xs text-slate-400">
+            "Remove" only forgets Codebase Engineer's own record of a repository (findings, scan
+            history, etc.) — it never touches the actual files on disk.
+          </p>
         )}
         <ul className="divide-y divide-slate-200 rounded border border-slate-200 bg-white">
           {projects.map((project) => (
@@ -80,6 +104,32 @@ export default function RepositoriesPage() {
                 >
                   {busyProjectId === project.id ? "Scanning…" : "Scan"}
                 </button>
+                {confirmRemoveId === project.id ? (
+                  <span className="flex items-center gap-1">
+                    <span className="text-xs text-slate-500">Remove from workspace?</span>
+                    <button
+                      className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      disabled={removingId === project.id}
+                      onClick={() => handleRemove(project.id)}
+                    >
+                      {removingId === project.id ? "Removing…" : "Confirm"}
+                    </button>
+                    <button
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      disabled={removingId === project.id}
+                      onClick={() => setConfirmRemoveId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                    onClick={() => setConfirmRemoveId(project.id)}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </li>
           ))}

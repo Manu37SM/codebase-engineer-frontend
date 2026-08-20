@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import {
   ApiError,
+  deleteProject,
   discoverProject,
   getAnalysisHistory,
   getDependencies,
@@ -40,6 +41,9 @@ export default function DashboardPage() {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanVersion, setScanVersion] = useState(0);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [pickerActionMessage, setPickerActionMessage] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [fileTotals, setFileTotals] = useState<{ total: number; test: number } | null>(null);
   const [gitAnalysis, setGitAnalysis] = useState<GitAnalysisResult | null>(null);
@@ -161,6 +165,21 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleRemoveProject(projectId: string) {
+    setRemovingId(projectId);
+    setPickerActionMessage(null);
+    try {
+      await deleteProject(projectId);
+      await refreshProjects();
+      setPickerActionMessage("Repository removed from the workspace. Its actual files were not touched.");
+    } catch (err) {
+      setPickerActionMessage(err instanceof ApiError ? err.message : "Failed to remove repository.");
+    } finally {
+      setRemovingId(null);
+      setConfirmRemoveId(null);
+    }
+  }
+
   // No project selected yet — the app's very first screen for a new
   // install. Task #93: this used to be a single sentence pointing at the
   // Repositories page in the sidebar; now the same actions happen right
@@ -170,7 +189,7 @@ export default function DashboardPage() {
     if (projectsLoading) {
       return (
         <div>
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dashboard</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Workspace</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         </div>
       );
@@ -204,12 +223,14 @@ export default function DashboardPage() {
 
     // Repositories already exist — offer a one-click picker instead of a
     // plain link, so returning to a multi-project setup doesn't require a
-    // detour through the sidebar either.
+    // detour through the sidebar either. Each card also offers Remove
+    // (Task #94) right here, with an inline confirm step — no detour to
+    // Repositories needed for that either.
     return (
       <div>
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Choose a repository</h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Select a repository to see its dashboard, or{" "}
+          Select a repository to open its workspace, or{" "}
           <Link to="/repositories" className="underline">
             register a new one
           </Link>
@@ -217,17 +238,46 @@ export default function DashboardPage() {
         </p>
         <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {projects.map((project) => (
-            <li key={project.id}>
+            <li key={project.id} className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
               <button
                 onClick={() => selectProject(project.id)}
-                className="w-full rounded border border-slate-200 bg-white p-4 text-left hover:border-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500"
+                className="w-full text-left"
               >
                 <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</div>
                 <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{project.root_path}</div>
               </button>
+              <div className="mt-3">
+                {confirmRemoveId === project.id ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Remove from workspace?</span>
+                    <button
+                      className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                      disabled={removingId === project.id}
+                      onClick={() => handleRemoveProject(project.id)}
+                    >
+                      {removingId === project.id ? "Removing…" : "Confirm"}
+                    </button>
+                    <button
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                      disabled={removingId === project.id}
+                      onClick={() => setConfirmRemoveId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-slate-600 dark:hover:bg-red-950"
+                    onClick={() => setConfirmRemoveId(project.id)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
+        {pickerActionMessage && <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{pickerActionMessage}</p>}
       </div>
     );
   }

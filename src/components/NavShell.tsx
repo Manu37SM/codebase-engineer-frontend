@@ -3,7 +3,7 @@ import { useTheme } from "../context/ThemeContext";
 import CommandPalette, { OPEN_EVENT } from "./CommandPalette";
 
 const NAV_SECTIONS = [
-  { to: "/", label: "Dashboard" },
+  { to: "/", label: "Workspace" },
   { to: "/repositories", label: "Repositories" },
   { to: "/architecture", label: "Architecture" },
   { to: "/findings", label: "Findings" },

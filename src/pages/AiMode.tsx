@@ -109,7 +109,7 @@ export default function AiModePage() {
     <div>
       <h1 className="text-lg font-semibold text-slate-900">AI Mode</h1>
       <p className="mt-1 max-w-2xl text-sm text-slate-500">
-        AI Mode is an optional layer — every Free Mode feature (Dashboard, Architecture, Findings,
+        AI Mode is an optional layer — every Free Mode feature (Workspace, Architecture, Findings,
         Git, Tests, Dependencies, Security, Audit) keeps working with no provider configured.
         Configuring a provider here only enables it for use; no AI action is triggered by
         configuring or enabling a provider. AI-assisted finding explanations, fix plans, and patch

@@ -113,6 +113,16 @@ export function getProject(
   return request(`/api/v1/projects/${id}`);
 }
 
+/**
+ * Removes a project from the workspace — its findings, snapshots, indexed
+ * files, and everything else derived from it, but NOT the real repository
+ * on disk (Task #94). Re-registering the same path afterwards starts
+ * fresh.
+ */
+export function deleteProject(id: string): Promise<void> {
+  return request(`/api/v1/projects/${id}`, { method: "DELETE" });
+}
+
 export function discoverProject(
   id: string
 ): Promise<{ snapshot: RepositorySnapshot; result: DiscoveryResult }> {

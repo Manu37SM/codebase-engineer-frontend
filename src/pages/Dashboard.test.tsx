@@ -19,6 +19,7 @@ vi.mock("../lib/api", async () => {
     createProject: vi.fn(),
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
+    deleteProject: vi.fn(),
   };
 });
 
@@ -33,6 +34,7 @@ const mockedApi = api as unknown as {
   createProject: ReturnType<typeof vi.fn>;
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
+  deleteProject: ReturnType<typeof vi.fn>;
 };
 
 const NON_GIT_RESULT = {
@@ -84,6 +86,7 @@ describe("DashboardPage", () => {
     mockedApi.createProject.mockReset();
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
+    mockedApi.deleteProject.mockReset();
     window.localStorage.clear();
   });
 
@@ -105,6 +108,27 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("Choose a repository")).toBeInTheDocument();
     expect(screen.getByText(PROJECT.name)).toBeInTheDocument();
     expect(screen.getByText("other-app")).toBeInTheDocument();
+  });
+
+  it("removes a repository directly from the picker after a confirm step (Task #94)", async () => {
+    mockedApi.listProjects
+      .mockResolvedValueOnce({ projects: [PROJECT] })
+      .mockResolvedValueOnce({ projects: [] });
+    mockedApi.deleteProject.mockResolvedValue(undefined);
+
+    const { default: userEvent } = await import("@testing-library/user-event");
+    renderPage();
+    await screen.findByText("Choose a repository");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(mockedApi.deleteProject).toHaveBeenCalledWith("p1"));
+    // With the last repository gone, the workspace falls back to the
+    // "register one" onboarding state — proving the removal actually took
+    // effect and the picker's local state didn't get stuck.
+    expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
   });
 
   it("prompts to scan when the selected repository has no snapshot yet", async () => {

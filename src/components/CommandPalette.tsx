@@ -15,7 +15,7 @@ interface Command {
 }
 
 const PAGES: { to: string; label: string }[] = [
-  { to: "/", label: "Dashboard" },
+  { to: "/", label: "Workspace" },
   { to: "/repositories", label: "Repositories" },
   { to: "/architecture", label: "Architecture" },
   { to: "/findings", label: "Findings" },

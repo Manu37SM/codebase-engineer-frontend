@@ -14,6 +14,7 @@ vi.mock("../lib/api", async () => {
     createProject: vi.fn(),
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
+    deleteProject: vi.fn(),
   };
 });
 
@@ -22,6 +23,7 @@ const mockedApi = api as unknown as {
   createProject: ReturnType<typeof vi.fn>;
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
+  deleteProject: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
@@ -40,6 +42,7 @@ describe("RepositoriesPage", () => {
     mockedApi.createProject.mockReset();
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
+    mockedApi.deleteProject.mockReset();
     window.localStorage.clear();
   });
 
@@ -104,5 +107,44 @@ describe("RepositoriesPage", () => {
     expect(
       await screen.findByText("Scanned 5 files (1 test, 0 generated).")
     ).toBeInTheDocument();
+  });
+
+  it("removes a repository after a confirm step, without touching real files (Task #94)", async () => {
+    mockedApi.listProjects
+      .mockResolvedValueOnce({
+        projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+      })
+      .mockResolvedValueOnce({ projects: [] });
+    mockedApi.deleteProject.mockResolvedValue(undefined);
+
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("my-app");
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByText("Remove from workspace?")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(mockedApi.deleteProject).toHaveBeenCalledWith("p1"));
+    expect(
+      await screen.findByText("Repository removed from the workspace. Its actual files were not touched.")
+    ).toBeInTheDocument();
+  });
+
+  it("cancels a remove without calling the API", async () => {
+    mockedApi.listProjects.mockResolvedValue({
+      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("my-app");
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByText("Remove from workspace?")).not.toBeInTheDocument();
+    expect(mockedApi.deleteProject).not.toHaveBeenCalled();
   });
 });

@@ -32,7 +32,7 @@ describe("App shell", () => {
     expect(screen.getByText("Codebase Engineer")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Primary" });
     for (const label of [
-      "Dashboard",
+      "Workspace",
       "Repositories",
       "Architecture",
       "Findings",
