@@ -17,6 +17,8 @@ vi.mock("../lib/api", async () => {
     indexProject: vi.fn(),
     deleteProject: vi.fn(),
     getCurrentUser: vi.fn(),
+    detectSubProjects: vi.fn(),
+    registerSubProject: vi.fn(),
   };
 });
 
@@ -27,6 +29,8 @@ const mockedApi = api as unknown as {
   indexProject: ReturnType<typeof vi.fn>;
   deleteProject: ReturnType<typeof vi.fn>;
   getCurrentUser: ReturnType<typeof vi.fn>;
+  detectSubProjects: ReturnType<typeof vi.fn>;
+  registerSubProject: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
@@ -49,6 +53,8 @@ describe("RepositoriesPage", () => {
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
     mockedApi.deleteProject.mockReset();
+    mockedApi.detectSubProjects.mockReset();
+    mockedApi.registerSubProject.mockReset();
     window.localStorage.clear();
   });
 
@@ -152,5 +158,55 @@ describe("RepositoriesPage", () => {
 
     expect(screen.queryByText("Remove from workspace?")).not.toBeInTheDocument();
     expect(mockedApi.deleteProject).not.toHaveBeenCalled();
+  });
+
+  it("detects and registers a nested sub-project (Task #87)", async () => {
+    mockedApi.listProjects.mockResolvedValue({
+      projects: [{ id: "p1", name: "monorepo", root_path: "/tmp/monorepo", created_at: "now" }],
+    });
+    mockedApi.detectSubProjects.mockResolvedValue({
+      isMultiProject: true,
+      candidates: [
+        { relativePath: "", markers: ["package.json"] },
+        { relativePath: "backend", markers: ["pyproject.toml"] },
+      ],
+      truncated: false,
+    });
+    mockedApi.registerSubProject.mockResolvedValue({
+      project: { id: "p2", name: "backend", root_path: "/tmp/monorepo/backend", created_at: "now" },
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("monorepo");
+
+    await user.click(screen.getByRole("button", { name: "Detect sub-projects" }));
+    expect(mockedApi.detectSubProjects).toHaveBeenCalledWith("p1");
+
+    expect(await screen.findByText(/looks like it contains 1 other project/)).toBeInTheDocument();
+    expect(screen.getByText("backend", { exact: false })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => expect(mockedApi.registerSubProject).toHaveBeenCalledWith("p1", "backend"));
+    expect(await screen.findByText('Registered "backend" as a separate project.')).toBeInTheDocument();
+  });
+
+  it("toggles the sub-project panel closed without a second fetch", async () => {
+    mockedApi.listProjects.mockResolvedValue({
+      projects: [{ id: "p1", name: "single-project", root_path: "/tmp/single", created_at: "now" }],
+    });
+    mockedApi.detectSubProjects.mockResolvedValue({ isMultiProject: false, candidates: [], truncated: false });
+
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("single-project");
+
+    await user.click(screen.getByRole("button", { name: "Detect sub-projects" }));
+    expect(await screen.findByText("No other project roots detected inside this folder.")).toBeInTheDocument();
+    expect(mockedApi.detectSubProjects).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Hide sub-projects" }));
+    expect(screen.queryByText("No other project roots detected inside this folder.")).not.toBeInTheDocument();
+    expect(mockedApi.detectSubProjects).toHaveBeenCalledTimes(1);
   });
 });

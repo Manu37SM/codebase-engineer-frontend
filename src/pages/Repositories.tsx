@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useProjects } from "../context/ProjectContext";
-import { deleteProject, discoverProject, indexProject } from "../lib/api";
+import {
+  deleteProject,
+  discoverProject,
+  indexProject,
+  detectSubProjects,
+  registerSubProject,
+  type MultiProjectDetectionResult,
+} from "../lib/api";
 import { ApiError } from "../lib/api";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
@@ -11,6 +18,9 @@ export default function RepositoriesPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
+  const [detectingId, setDetectingId] = useState<string | null>(null);
+  const [registeringKey, setRegisteringKey] = useState<string | null>(null);
 
   async function handleRegistered(projectId: string) {
     await refresh();
@@ -31,6 +41,43 @@ export default function RepositoriesPage() {
       setActionMessage(err instanceof ApiError ? err.message : "Scan failed.");
     } finally {
       setBusyProjectId(null);
+    }
+  }
+
+  async function handleDetectSubProjects(projectId: string) {
+    // Toggle closed if already shown, rather than re-fetching every click.
+    if (subProjectsById[projectId]) {
+      setSubProjectsById((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+      return;
+    }
+    setDetectingId(projectId);
+    setActionMessage(null);
+    try {
+      const result = await detectSubProjects(projectId);
+      setSubProjectsById((prev) => ({ ...prev, [projectId]: result }));
+    } catch (err) {
+      setActionMessage(err instanceof ApiError ? err.message : "Failed to scan for nested projects.");
+    } finally {
+      setDetectingId(null);
+    }
+  }
+
+  async function handleRegisterSubProject(projectId: string, relativePath: string) {
+    const key = `${projectId}:${relativePath}`;
+    setRegisteringKey(key);
+    setActionMessage(null);
+    try {
+      const { project } = await registerSubProject(projectId, relativePath);
+      setActionMessage(`Registered "${project.name}" as a separate project.`);
+      await refresh();
+    } catch (err) {
+      setActionMessage(err instanceof ApiError ? err.message : "Failed to register the nested project.");
+    } finally {
+      setRegisteringKey(null);
     }
   }
 
@@ -75,64 +122,116 @@ export default function RepositoriesPage() {
           </p>
         )}
         <ul className="divide-y divide-slate-200 rounded border border-slate-200 bg-white">
-          {projects.map((project) => (
-            <li key={project.id} className="flex items-center justify-between gap-3 p-3">
-              <div>
-                <div className="text-sm font-medium text-slate-900">{project.name}</div>
-                <div className="text-xs text-slate-500">{project.root_path}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                {busyProjectId === project.id && (
-                  <ActivityIndicator label="Discovering & indexing files" />
-                )}
-                {selectedProjectId === project.id ? (
-                  <span className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white">
-                    Selected
-                  </span>
-                ) : (
-                  <button
-                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                    onClick={() => selectProject(project.id)}
-                  >
-                    Select
-                  </button>
-                )}
-                <button
-                  className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  disabled={busyProjectId === project.id}
-                  onClick={() => handleDiscoverAndIndex(project.id)}
-                >
-                  {busyProjectId === project.id ? "Scanning…" : "Scan"}
-                </button>
-                {confirmRemoveId === project.id ? (
-                  <span className="flex items-center gap-1">
-                    <span className="text-xs text-slate-500">Remove from workspace?</span>
+          {projects.map((project) => {
+            const subResult = subProjectsById[project.id];
+            const nestedCandidates = subResult?.candidates.filter((c) => c.relativePath !== "") ?? [];
+            return (
+              <li key={project.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-900">{project.name}</div>
+                    <div className="text-xs text-slate-500">{project.root_path}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {busyProjectId === project.id && (
+                      <ActivityIndicator label="Discovering & indexing files" />
+                    )}
+                    {selectedProjectId === project.id ? (
+                      <span className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white">
+                        Selected
+                      </span>
+                    ) : (
+                      <button
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() => selectProject(project.id)}
+                      >
+                        Select
+                      </button>
+                    )}
                     <button
-                      className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      disabled={removingId === project.id}
-                      onClick={() => handleRemove(project.id)}
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      disabled={busyProjectId === project.id}
+                      onClick={() => handleDiscoverAndIndex(project.id)}
                     >
-                      {removingId === project.id ? "Removing…" : "Confirm"}
+                      {busyProjectId === project.id ? "Scanning…" : "Scan"}
                     </button>
                     <button
-                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      disabled={removingId === project.id}
-                      onClick={() => setConfirmRemoveId(null)}
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      disabled={detectingId === project.id}
+                      onClick={() => handleDetectSubProjects(project.id)}
                     >
-                      Cancel
+                      {detectingId === project.id
+                        ? "Scanning…"
+                        : subResult
+                          ? "Hide sub-projects"
+                          : "Detect sub-projects"}
                     </button>
-                  </span>
-                ) : (
-                  <button
-                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                    onClick={() => setConfirmRemoveId(project.id)}
-                  >
-                    Remove
-                  </button>
+                    {confirmRemoveId === project.id ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500">Remove from workspace?</span>
+                        <button
+                          className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          disabled={removingId === project.id}
+                          onClick={() => handleRemove(project.id)}
+                        >
+                          {removingId === project.id ? "Removing…" : "Confirm"}
+                        </button>
+                        <button
+                          className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          disabled={removingId === project.id}
+                          onClick={() => setConfirmRemoveId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                        onClick={() => setConfirmRemoveId(project.id)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {subResult && (
+                  <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                    {nestedCandidates.length === 0 ? (
+                      <p className="text-slate-500">No other project roots detected inside this folder.</p>
+                    ) : (
+                      <>
+                        <p className="mb-1 text-slate-600">
+                          This folder looks like it contains {nestedCandidates.length} other project
+                          {nestedCandidates.length === 1 ? "" : "s"} — register any of them separately:
+                        </p>
+                        <ul className="space-y-1">
+                          {nestedCandidates.map((c) => {
+                            const key = `${project.id}:${c.relativePath}`;
+                            return (
+                              <li key={c.relativePath} className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-slate-700">
+                                  {c.relativePath}{" "}
+                                  <span className="text-slate-400">({c.markers.join(", ")})</span>
+                                </span>
+                                <button
+                                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                                  disabled={registeringKey === key}
+                                  onClick={() => handleRegisterSubProject(project.id, c.relativePath)}
+                                >
+                                  {registeringKey === key ? "Registering…" : "Register"}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>

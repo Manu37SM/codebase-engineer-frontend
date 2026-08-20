@@ -119,6 +119,37 @@ export function importProject(
   });
 }
 
+// --- Multi-project-in-folder detection (Task #87) ----------------------
+
+export interface SubProjectCandidate {
+  /** POSIX-style path relative to the project root; "" means the root itself. */
+  relativePath: string;
+  markers: string[];
+}
+
+export interface MultiProjectDetectionResult {
+  isMultiProject: boolean;
+  candidates: SubProjectCandidate[];
+  truncated: boolean;
+}
+
+/** Scans a registered project's root for other plausible nested project roots (a monorepo, an org-wide zip, etc.). Read-only — never registers anything. */
+export function detectSubProjects(projectId: string): Promise<MultiProjectDetectionResult> {
+  return request(`/api/v1/projects/${projectId}/subprojects`);
+}
+
+/** Registers a detected sub-directory as its own separate project — the parent registration is left untouched. */
+export function registerSubProject(
+  projectId: string,
+  relativePath: string,
+  name?: string
+): Promise<{ project: Project }> {
+  return request(`/api/v1/projects/${projectId}/subprojects/register`, {
+    method: "POST",
+    body: JSON.stringify({ relativePath, name }),
+  });
+}
+
 export function getProject(
   id: string
 ): Promise<{ project: Project; latestSnapshot: RepositorySnapshot | null }> {
