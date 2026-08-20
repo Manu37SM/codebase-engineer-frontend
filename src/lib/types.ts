@@ -3,6 +3,8 @@ export interface Project {
   name: string;
   root_path: string;
   created_at: string;
+  /** Task #90: whether AI-Mode's "apply" writes an approved patch straight to disk ("direct", the default) or refuses in favor of a zip download ("download"). */
+  apply_mode: "direct" | "download";
 }
 
 export interface WorkingTreeStatus {

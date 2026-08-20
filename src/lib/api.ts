@@ -360,6 +360,22 @@ export function applyPatch(id: string, patchId: string): Promise<{ patch: PatchR
   return request(`/api/v1/projects/${id}/patches/${patchId}/apply`, { method: "POST" });
 }
 
+// Task #90: per-project setting for what "apply" does — write straight to
+// disk ("direct") or refuse in favor of a zip download ("download"), plus
+// the download route itself.
+
+export function updateProjectApplyMode(id: string, applyMode: "direct" | "download"): Promise<{ project: Project }> {
+  return request(`/api/v1/projects/${id}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify({ applyMode }),
+  });
+}
+
+/** Real browser-navigable URL (not a `request()` JSON call) — the caller opens/links to this so the browser handles the file download itself. */
+export function getPatchDownloadZipUrl(id: string, patchId: string): string {
+  return `/api/v1/projects/${id}/patches/${patchId}/download-zip`;
+}
+
 // AI Mode — Self-Review (Phase 21). docs/AI_MODE.md §6's checklist,
 // advisory only — never changes a patch's status and is never a
 // precondition for approve-apply/apply. Can be requested at any point

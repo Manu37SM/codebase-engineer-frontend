@@ -14,6 +14,7 @@ import {
   explainFinding,
   generatePatch,
   generateTest,
+  getPatchDownloadZipUrl,
   getFindingContext,
   getFindingExplanation,
   getFindingFixPlan,
@@ -824,6 +825,8 @@ export default function FindingsPage() {
                   {patchesLoading !== finding.id && (
                     <PatchesView
                       findingId={finding.id}
+                      projectId={selectedProject?.id ?? null}
+                      applyMode={selectedProject?.apply_mode ?? "direct"}
                       patchList={patches[finding.id] ?? []}
                       hasEnabledProvider={hasEnabledProvider}
                       busy={patchActionBusy}
@@ -897,6 +900,8 @@ export default function FindingsPage() {
  */
 function PatchesView({
   patchList,
+  projectId,
+  applyMode,
   hasEnabledProvider,
   busy,
   onCreate,
@@ -915,6 +920,10 @@ function PatchesView({
 }: {
   findingId: string;
   patchList: PatchRecord[];
+  /** Task #90 — which project this finding belongs to, needed to build the zip-download URL. */
+  projectId: string | null;
+  /** Task #90 — "download" hides the direct "Apply patch" action in favor of a zip-download link. */
+  applyMode: "direct" | "download";
   hasEnabledProvider: boolean;
   busy: string | null;
   onCreate: () => void;
@@ -1011,13 +1020,41 @@ function PatchesView({
               )}
 
               {(patch.status === "approved_for_apply" || patch.status === "failed") && (
-                <button
-                  onClick={() => onApply(patch.id)}
-                  disabled={busy !== null}
-                  className="mt-1 rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
-                >
-                  {patch.status === "failed" ? "Retry apply" : "Apply patch"}
-                </button>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {applyMode === "download" ? (
+                    <>
+                      {projectId && (
+                        <a
+                          href={getPatchDownloadZipUrl(projectId, patch.id)}
+                          className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white"
+                        >
+                          Download zip
+                        </a>
+                      )}
+                      <span className="text-xs text-slate-500">
+                        This project is set to download changes instead of applying them directly (Settings).
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => onApply(patch.id)}
+                        disabled={busy !== null}
+                        className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        {patch.status === "failed" ? "Retry apply" : "Apply patch"}
+                      </button>
+                      {projectId && (
+                        <a
+                          href={getPatchDownloadZipUrl(projectId, patch.id)}
+                          className="text-xs text-slate-500 underline hover:text-slate-700"
+                        >
+                          or download as a zip instead
+                        </a>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
 
               {patch.status === "applied" && (

@@ -6,6 +6,7 @@ import {
   indexProject,
   detectSubProjects,
   registerSubProject,
+  updateProjectApplyMode,
   type MultiProjectDetectionResult,
 } from "../lib/api";
 import { ApiError } from "../lib/api";
@@ -21,6 +22,7 @@ export default function RepositoriesPage() {
   const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
   const [detectingId, setDetectingId] = useState<string | null>(null);
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
+  const [applyModeSavingId, setApplyModeSavingId] = useState<string | null>(null);
 
   async function handleRegistered(projectId: string) {
     await refresh();
@@ -81,6 +83,19 @@ export default function RepositoriesPage() {
     }
   }
 
+  async function handleApplyModeChange(projectId: string, applyMode: "direct" | "download") {
+    setApplyModeSavingId(projectId);
+    setActionMessage(null);
+    try {
+      await updateProjectApplyMode(projectId, applyMode);
+      await refresh();
+    } catch (err) {
+      setActionMessage(err instanceof ApiError ? err.message : "Failed to update the apply-mode setting.");
+    } finally {
+      setApplyModeSavingId(null);
+    }
+  }
+
   async function handleRemove(projectId: string) {
     setRemovingId(projectId);
     setActionMessage(null);
@@ -133,6 +148,19 @@ export default function RepositoriesPage() {
                     <div className="text-xs text-slate-500">{project.root_path}</div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-slate-500" htmlFor={`apply-mode-${project.id}`}>
+                      AI apply:
+                      <select
+                        id={`apply-mode-${project.id}`}
+                        className="rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-700 disabled:opacity-50"
+                        value={project.apply_mode}
+                        disabled={applyModeSavingId === project.id}
+                        onChange={(e) => handleApplyModeChange(project.id, e.target.value as "direct" | "download")}
+                      >
+                        <option value="direct">Direct to disk</option>
+                        <option value="download">Download as zip</option>
+                      </select>
+                    </label>
                     {busyProjectId === project.id && (
                       <ActivityIndicator label="Discovering & indexing files" />
                     )}

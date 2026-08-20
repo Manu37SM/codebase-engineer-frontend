@@ -19,6 +19,7 @@ vi.mock("../lib/api", async () => {
     getCurrentUser: vi.fn(),
     detectSubProjects: vi.fn(),
     registerSubProject: vi.fn(),
+    updateProjectApplyMode: vi.fn(),
   };
 });
 
@@ -31,6 +32,7 @@ const mockedApi = api as unknown as {
   getCurrentUser: ReturnType<typeof vi.fn>;
   detectSubProjects: ReturnType<typeof vi.fn>;
   registerSubProject: ReturnType<typeof vi.fn>;
+  updateProjectApplyMode: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
@@ -55,6 +57,7 @@ describe("RepositoriesPage", () => {
     mockedApi.deleteProject.mockReset();
     mockedApi.detectSubProjects.mockReset();
     mockedApi.registerSubProject.mockReset();
+    mockedApi.updateProjectApplyMode.mockReset();
     window.localStorage.clear();
   });
 
@@ -65,10 +68,10 @@ describe("RepositoriesPage", () => {
 
   it("registers a new repository and lists it", async () => {
     mockedApi.listProjects.mockResolvedValueOnce({ projects: [] }).mockResolvedValueOnce({
-      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
     });
     mockedApi.createProject.mockResolvedValue({
-      project: { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" },
+      project: { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" },
     });
 
     renderPage();
@@ -99,7 +102,7 @@ describe("RepositoriesPage", () => {
 
   it("scans a repository via discover + index", async () => {
     mockedApi.listProjects.mockResolvedValue({
-      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
     });
     mockedApi.discoverProject.mockResolvedValue({});
     mockedApi.indexProject.mockResolvedValue({
@@ -124,7 +127,7 @@ describe("RepositoriesPage", () => {
   it("removes a repository after a confirm step, without touching real files (Task #94)", async () => {
     mockedApi.listProjects
       .mockResolvedValueOnce({
-        projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+        projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
       })
       .mockResolvedValueOnce({ projects: [] });
     mockedApi.deleteProject.mockResolvedValue(undefined);
@@ -146,7 +149,7 @@ describe("RepositoriesPage", () => {
 
   it("cancels a remove without calling the API", async () => {
     mockedApi.listProjects.mockResolvedValue({
-      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" }],
+      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
     });
 
     renderPage();
@@ -162,7 +165,7 @@ describe("RepositoriesPage", () => {
 
   it("detects and registers a nested sub-project (Task #87)", async () => {
     mockedApi.listProjects.mockResolvedValue({
-      projects: [{ id: "p1", name: "monorepo", root_path: "/tmp/monorepo", created_at: "now" }],
+      projects: [{ id: "p1", name: "monorepo", root_path: "/tmp/monorepo", created_at: "now", apply_mode: "direct" }],
     });
     mockedApi.detectSubProjects.mockResolvedValue({
       isMultiProject: true,
@@ -173,7 +176,7 @@ describe("RepositoriesPage", () => {
       truncated: false,
     });
     mockedApi.registerSubProject.mockResolvedValue({
-      project: { id: "p2", name: "backend", root_path: "/tmp/monorepo/backend", created_at: "now" },
+      project: { id: "p2", name: "backend", root_path: "/tmp/monorepo/backend", created_at: "now", apply_mode: "direct" },
     });
 
     renderPage();
@@ -193,7 +196,7 @@ describe("RepositoriesPage", () => {
 
   it("toggles the sub-project panel closed without a second fetch", async () => {
     mockedApi.listProjects.mockResolvedValue({
-      projects: [{ id: "p1", name: "single-project", root_path: "/tmp/single", created_at: "now" }],
+      projects: [{ id: "p1", name: "single-project", root_path: "/tmp/single", created_at: "now", apply_mode: "direct" }],
     });
     mockedApi.detectSubProjects.mockResolvedValue({ isMultiProject: false, candidates: [], truncated: false });
 
@@ -208,5 +211,23 @@ describe("RepositoriesPage", () => {
     await user.click(screen.getByRole("button", { name: "Hide sub-projects" }));
     expect(screen.queryByText("No other project roots detected inside this folder.")).not.toBeInTheDocument();
     expect(mockedApi.detectSubProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it("changes a project's apply mode (Task #90)", async () => {
+    mockedApi.listProjects.mockResolvedValue({
+      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
+    });
+    mockedApi.updateProjectApplyMode.mockResolvedValue({
+      project: { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "download" },
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("my-app");
+
+    const select = screen.getByLabelText("AI apply:");
+    await user.selectOptions(select, "download");
+
+    expect(mockedApi.updateProjectApplyMode).toHaveBeenCalledWith("p1", "download");
   });
 });

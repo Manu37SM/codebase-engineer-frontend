@@ -61,7 +61,7 @@ const NO_DEPS_RESULT = {
   analyzedAt: "now",
 };
 
-const PROJECT = { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" };
+const PROJECT = { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" };
 
 function renderPage() {
   return render(
@@ -107,7 +107,7 @@ describe("DashboardPage", () => {
     mockedApi.listProjects.mockResolvedValue({
       projects: [
         PROJECT,
-        { id: "p2", name: "other-app", root_path: "/tmp/other-app", created_at: "now" },
+        { id: "p2", name: "other-app", root_path: "/tmp/other-app", created_at: "now", apply_mode: "direct" },
       ],
     });
     renderPage();
