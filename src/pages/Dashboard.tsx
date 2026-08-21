@@ -30,6 +30,7 @@ import {
 } from "../components/Charts";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
+import AiProviderReminder from "../components/AiProviderReminder";
 import { getAutoScanOnRegister } from "../lib/settings";
 
 export default function DashboardPage() {
@@ -58,6 +59,9 @@ export default function DashboardPage() {
   const [analysisRunsError, setAnalysisRunsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Shown once right after a successful registration — see
+  // components/AiProviderReminder.tsx for why this isn't a hard gate.
+  const [showAiReminder, setShowAiReminder] = useState(false);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -187,6 +191,7 @@ export default function DashboardPage() {
   async function handleRegistered(projectId: string) {
     await refreshProjects();
     selectProject(projectId);
+    setShowAiReminder(true);
     if (getAutoScanOnRegister()) {
       await scanProject(projectId);
     }
@@ -337,6 +342,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
+        {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
           This repository hasn't been scanned yet.
         </p>
@@ -382,6 +388,7 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+      {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
       {scanning && (
         <div className="mt-2">
           <ActivityIndicator label="Discovering & indexing files" />

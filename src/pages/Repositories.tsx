@@ -13,6 +13,7 @@ import { ApiError } from "../lib/api";
 import { getAutoScanOnRegister } from "../lib/settings";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
+import AiProviderReminder from "../components/AiProviderReminder";
 
 export default function RepositoriesPage() {
   const { projects, loading, error, selectedProjectId, selectProject, refresh } = useProjects();
@@ -23,10 +24,14 @@ export default function RepositoriesPage() {
   const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
   const [detectingId, setDetectingId] = useState<string | null>(null);
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
+  // Shown once right after a successful registration — see
+  // components/AiProviderReminder.tsx for why this isn't a hard gate.
+  const [showAiReminder, setShowAiReminder] = useState(false);
 
   async function handleRegistered(projectId: string) {
     await refresh();
     selectProject(projectId);
+    setShowAiReminder(true);
     // "Auto-scan after registering" (Settings) — on by default so a newly
     // registered repo shows findings/dependencies/Git activity right away
     // instead of requiring a separate manual "Scan" click.
@@ -121,6 +126,8 @@ export default function RepositoriesPage() {
       </p>
 
       <RegisterProjectForm onRegistered={handleRegistered} className="mt-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4" />
+
+      {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
 
       {actionMessage && <p className="mt-3 text-sm text-slate-600">{actionMessage}</p>}
 
