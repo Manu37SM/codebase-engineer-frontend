@@ -578,9 +578,7 @@ export interface BillingStatus {
   subscription: { status: "active" | "inactive"; currentPeriodEnd: string | null } | null;
 }
 
-export interface CheckoutOrder {
-  orderId: string;
-  amount: number;
-  currency: string;
-  keyId: string;
+export interface CheckoutSession {
+  sessionId: string;
+  checkoutUrl: string;
 }

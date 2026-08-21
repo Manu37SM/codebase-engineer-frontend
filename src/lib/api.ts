@@ -31,7 +31,7 @@ import type {
   RepositorySnapshot,
   TestRunRecord,
   BillingStatus,
-  CheckoutOrder,
+  CheckoutSession,
   ChangesResult,
   AnalysisHistoryResult,
 } from "./types";
@@ -571,7 +571,7 @@ export function getBillingStatus(): Promise<BillingStatus> {
   return request("/api/v1/billing/status");
 }
 
-export function createBillingCheckout(): Promise<CheckoutOrder> {
+export function createBillingCheckout(): Promise<CheckoutSession> {
   return request("/api/v1/billing/checkout", { method: "POST" });
 }
 
@@ -631,8 +631,8 @@ export function getGitHubSignInUrl(): string {
   return "/api/v1/auth/github/start";
 }
 
-/** Which OAuth providers (and Turnstile bot-protection) are actually configured server-side — lets the login/register pages hide buttons/widgets that would otherwise 404 or always fail. */
-export function getAuthProviders(): Promise<{ google: boolean; github: boolean; turnstile: boolean }> {
+/** Which OAuth providers are actually configured server-side — lets the login/register pages hide buttons that would otherwise 404. */
+export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
   return request("/api/v1/auth/providers");
 }
 

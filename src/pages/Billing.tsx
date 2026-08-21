@@ -2,12 +2,6 @@ import { useEffect, useState } from "react";
 import { ApiError, createBillingCheckout, getBillingStatus } from "../lib/api";
 import type { BillingStatus } from "../lib/types";
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-  }
-}
-
 export default function BillingPage() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,27 +25,15 @@ export default function BillingPage() {
     setCheckoutError(null);
     setCheckoutBusy(true);
     try {
-      const order = await createBillingCheckout();
-      if (typeof window.Razorpay !== "function") {
-        setCheckoutError(
-          `A real order was created (${order.orderId}), but the Razorpay Checkout script is not ` +
-            "loaded in this page, so the payment widget can't be opened here. This is an honest " +
-            "limitation, not a fabricated success — no payment can be collected without it."
-        );
-        return;
-      }
-      const checkout = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.orderId,
-        name: "Codebase Engineer — Pro",
-        handler: () => load(),
-      });
-      checkout.open();
+      // Dodo Payments' checkout is a real hosted page — no client-side
+      // payment widget/script to load, unlike the earlier Razorpay
+      // integration. The browser is simply redirected there, then back
+      // to this same page (return_url, server-side default "/settings")
+      // once payment succeeds or fails.
+      const session = await createBillingCheckout();
+      window.location.href = session.checkoutUrl;
     } catch (err) {
       setCheckoutError(err instanceof ApiError ? err.message : "Failed to start checkout.");
-    } finally {
       setCheckoutBusy(false);
     }
   }
@@ -70,7 +52,8 @@ export default function BillingPage() {
       <p className="mt-1 max-w-2xl text-sm text-slate-500">
         Billing is entirely optional. Free Mode and AI Mode using your own provider keys keep
         working exactly the same whether billing is configured or not — see docs/MONETIZATION.md.
-        A monthly AI-operation cap only applies when the server operator has configured Razorpay.
+        A monthly AI-operation cap only applies when the server operator has configured Dodo
+        Payments.
       </p>
 
       <div className="mt-4 rounded border border-slate-200 bg-white p-4">
@@ -81,15 +64,15 @@ export default function BillingPage() {
           <div className="text-sm text-slate-500">
             <p>
               Billing is not configured on this server — AI-Mode usage stays unlimited, and
-              nothing else about the app changes. This is expected until Razorpay credentials are
-              set; there's no in-app form for it on purpose (real API secrets shouldn't be pasted
-              into a web page).
+              nothing else about the app changes. This is expected until Dodo Payments
+              credentials are set; there's no in-app form for it on purpose (real API secrets
+              shouldn't be pasted into a web page).
             </p>
             <p className="mt-2">
               A server operator can turn it on by setting three environment variables —{" "}
-              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_KEY_ID</code>,{" "}
-              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_KEY_SECRET</code>, and{" "}
-              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">RAZORPAY_WEBHOOK_SECRET</code> —
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">DODO_PAYMENTS_API_KEY</code>,{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">DODO_PAYMENTS_WEBHOOK_KEY</code>, and{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">DODO_PRODUCT_ID</code> —
               on the machine running the backend, then restarting it. See{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">backend/.env.example</code> and the
               step-by-step guide in <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">docs/MONETIZATION.md</code>{" "}
@@ -145,7 +128,7 @@ export default function BillingPage() {
                   disabled={checkoutBusy}
                   onClick={handleUpgrade}
                 >
-                  {checkoutBusy ? "Starting checkout…" : "Upgrade to Pro"}
+                  {checkoutBusy ? "Redirecting to checkout…" : "Upgrade to Pro"}
                 </button>
                 {checkoutError && <p className="mt-2 text-sm text-red-600">{checkoutError}</p>}
               </div>

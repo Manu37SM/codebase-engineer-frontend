@@ -23,14 +23,30 @@ function renderPage() {
 }
 
 describe("BillingPage", () => {
+  // jsdom doesn't implement real navigation — assigning window.location.href
+  // logs a "not implemented" warning and never actually updates the
+  // property, so a real navigation can't be observed by reading it back.
+  // Replace `window.location` with a plain writable stub for these tests
+  // so the redirect assignment itself (what Billing.tsx actually does) can
+  // be asserted on directly.
+  const originalLocation = window.location;
+
   beforeEach(() => {
     mockedApi.getBillingStatus.mockReset();
     mockedApi.createBillingCheckout.mockReset();
-    delete (window as unknown as { Razorpay?: unknown }).Razorpay;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, href: "" },
+    });
   });
 
   afterEach(() => {
-    delete (window as unknown as { Razorpay?: unknown }).Razorpay;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   it("shows an honest not-configured message and no upgrade button when billing is unconfigured", async () => {
@@ -93,7 +109,7 @@ describe("BillingPage", () => {
     expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).not.toBeInTheDocument();
   });
 
-  it("creates a real checkout order and honestly reports that the payment widget can't open without the Razorpay script", async () => {
+  it("creates a real checkout session and redirects the browser to Dodo's hosted checkout URL", async () => {
     mockedApi.getBillingStatus.mockResolvedValue({
       configured: true,
       tier: "free",
@@ -102,10 +118,8 @@ describe("BillingPage", () => {
       subscription: { status: "active", currentPeriodEnd: null },
     });
     mockedApi.createBillingCheckout.mockResolvedValue({
-      orderId: "order_abc123",
-      amount: 999900,
-      currency: "INR",
-      keyId: "rzp_live_key",
+      sessionId: "cks_abc123",
+      checkoutUrl: "https://test.dodopayments.com/checkout/cks_abc123",
     });
     renderPage();
 
@@ -114,11 +128,11 @@ describe("BillingPage", () => {
 
     expect(mockedApi.createBillingCheckout).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.getByText(/A real order was created \(order_abc123\)/)).toBeInTheDocument();
+      expect(window.location.href).toBe("https://test.dodopayments.com/checkout/cks_abc123");
     });
   });
 
-  it("shows an error when checkout creation fails", async () => {
+  it("shows an error and re-enables the button when checkout creation fails", async () => {
     mockedApi.getBillingStatus.mockResolvedValue({
       configured: true,
       tier: "free",
@@ -130,34 +144,12 @@ describe("BillingPage", () => {
     renderPage();
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Upgrade to Pro" }));
+    const button = await screen.findByRole("button", { name: "Upgrade to Pro" });
+    await user.click(button);
 
     await waitFor(() => {
       expect(screen.getByText("Failed to start checkout.")).toBeInTheDocument();
     });
-  });
-
-  it("opens the real Razorpay Checkout widget when the script is available", async () => {
-    mockedApi.getBillingStatus.mockResolvedValue({
-      configured: true,
-      tier: "free",
-      limit: 50,
-      used: 5,
-      subscription: { status: "active", currentPeriodEnd: null },
-    });
-    mockedApi.createBillingCheckout.mockResolvedValue({
-      orderId: "order_abc123",
-      amount: 999900,
-      currency: "INR",
-      keyId: "rzp_live_key",
-    });
-    const open = vi.fn();
-    (window as unknown as { Razorpay: unknown }).Razorpay = vi.fn().mockImplementation(() => ({ open }));
-    renderPage();
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Upgrade to Pro" }));
-
-    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Upgrade to Pro" })).not.toBeDisabled();
   });
 });

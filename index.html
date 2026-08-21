@@ -8,15 +8,11 @@
   <body>
     <div id="root"></div>
     <!--
-      Razorpay Checkout script (Task #75/Billing.tsx). Loaded unconditionally
-      — it's a small static script and does nothing unless Billing.tsx
-      actually constructs a `window.Razorpay` checkout instance, which only
-      happens after a real server-side order is created (which itself only
-      happens when RAZORPAY_KEY_ID/KEY_SECRET/WEBHOOK_SECRET are configured
-      on the backend — see docs/MONETIZATION.md §2). CSP's script-src
-      explicitly allow-lists this origin (backend/src/security/headers.ts).
+      Billing (Dodo Payments, Billing.tsx) needs no client-side script —
+      unlike the earlier Razorpay Checkout integration, Dodo's checkout is
+      a separate hosted page reached via a plain browser navigation
+      (`window.location.href = checkoutUrl`), not an embedded widget.
     -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
