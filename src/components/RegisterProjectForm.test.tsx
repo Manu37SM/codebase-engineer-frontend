@@ -9,7 +9,6 @@ vi.mock("../lib/api", async () => {
   const actual = await vi.importActual<typeof api>("../lib/api");
   return {
     ...actual,
-    createProject: vi.fn(),
     importProject: vi.fn(),
     getCurrentUser: vi.fn(),
     listGitHubRepos: vi.fn(),
@@ -20,7 +19,6 @@ vi.mock("../lib/api", async () => {
 });
 
 const mockedApi = api as unknown as {
-  createProject: ReturnType<typeof vi.fn>;
   importProject: ReturnType<typeof vi.fn>;
   getCurrentUser: ReturnType<typeof vi.fn>;
   listGitHubRepos: ReturnType<typeof vi.fn>;
@@ -57,7 +55,6 @@ function renderForm(onRegistered = vi.fn()) {
 
 describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitHub repo browser)", () => {
   beforeEach(() => {
-    mockedApi.createProject.mockReset();
     mockedApi.importProject.mockReset();
     mockedApi.listGitHubRepos.mockReset();
     mockedApi.importGitHubRepo.mockReset();
@@ -66,9 +63,15 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
   });
 
-  it("defaults to local-path mode", async () => {
+  it("defaults to Zip URL mode", async () => {
     renderForm();
-    expect(await screen.findByLabelText("Absolute path")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Zip download URL")).toBeInTheDocument();
+  });
+
+  it("does not offer a Local path tab (this deployment runs on a remote server)", async () => {
+    renderForm();
+    await screen.findByLabelText("Zip download URL");
+    expect(screen.queryByRole("button", { name: "Local path" })).not.toBeInTheDocument();
   });
 
   it("switches to Git URL mode and imports via a git clone", async () => {
@@ -84,16 +87,15 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
     expect(mockedApi.importProject).toHaveBeenCalledWith("cloned-repo", "git", "https://github.com/user/repo.git");
-    expect(mockedApi.createProject).not.toHaveBeenCalled();
     expect(onRegistered).toHaveBeenCalledWith("p1");
   });
 
-  it("switches to Zip URL mode and imports via a zip download", async () => {
+  it("Zip URL mode (the default) imports via a zip download", async () => {
     mockedApi.importProject.mockResolvedValue({ project: { id: "p2" } });
     renderForm();
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Zip URL" }));
+    await screen.findByLabelText("Zip download URL");
 
     await user.type(screen.getByLabelText("Name"), "zipped-repo");
     await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/archive.zip");

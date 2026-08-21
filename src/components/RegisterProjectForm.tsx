@@ -1,6 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
-  createProject,
   importProject,
   importGitHubRepo,
   listGitHubRepos,
@@ -20,12 +19,11 @@ interface RegisterProjectFormProps {
   className?: string;
 }
 
-type Mode = "local" | "git" | "zip" | "github" | "drive";
+type Mode = "zip" | "git" | "github" | "drive";
 
 const MODE_LABELS: Record<Mode, string> = {
-  local: "Local path",
-  git: "Git URL",
   zip: "Zip URL",
+  git: "Git URL",
   github: "GitHub",
   drive: "Google Drive",
 };
@@ -36,17 +34,26 @@ const MODE_LABELS: Record<Mode, string> = {
  * register-right-here flow. Task #85 added a remote git URL and a plain
  * zip/download URL as sources. Task #84 added browsing the repositories
  * of whichever GitHub account the user signed in with (Task #83) and
- * cloning one directly. Task #86 adds a fifth source: browse zip files in
- * whichever Google account the user signed in with (Task #82) and import
- * one directly. All five sources are still local-first: the result always
- * ends up as a plain directory on this machine's own data directory,
- * registered exactly like a manually-picked local path.
+ * cloning one directly. Task #86 adds a fourth source: browse zip files
+ * in whichever Google account the user signed in with (Task #82) and
+ * import one directly.
+ *
+ * "Local path" (register an absolute path already on the machine running
+ * the app) used to be a fifth tab here, and was the default/first one.
+ * It's been removed for this deployment: this instance runs on a remote
+ * server, so an "absolute path" typed here has to be a path that exists
+ * *inside that server's own filesystem* — never a path on the user's own
+ * PC, which is what people kept typing (see the "Project root must be an
+ * absolute path" rejection this caused). Every remaining source (Zip URL,
+ * Git URL, GitHub, Google Drive) downloads/clones into this server's data
+ * directory instead, so there's nothing for the user to get right about
+ * whose filesystem a path lives on. Zip URL is first since it needs no
+ * account connection at all, unlike GitHub/Google Drive.
  */
 export default function RegisterProjectForm({ onRegistered, className }: RegisterProjectFormProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<Mode>("local");
+  const [mode, setMode] = useState<Mode>("zip");
   const [name, setName] = useState("");
-  const [rootPath, setRootPath] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +94,6 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
 
   function reset() {
     setName("");
-    setRootPath("");
     setSourceUrl("");
     setSelectedRepo("");
     setSelectedDriveFile("");
@@ -97,12 +103,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
     e.preventDefault();
     setFormError(null);
 
-    if (mode === "local") {
-      if (!name.trim() || !rootPath.trim()) {
-        setFormError("Both a name and an absolute repository path are required.");
-        return;
-      }
-    } else if (mode === "github") {
+    if (mode === "github") {
       if (!selectedRepo) {
         setFormError("Pick a repository to import.");
         return;
@@ -120,13 +121,11 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
     setSubmitting(true);
     try {
       const { project } =
-        mode === "local"
-          ? await createProject(name.trim(), rootPath.trim())
-          : mode === "github"
-            ? await importGitHubRepo(selectedRepo, name.trim() || undefined)
-            : mode === "drive"
-              ? await importDriveZipFile(selectedDriveFile, name.trim() || undefined)
-              : await importProject(name.trim(), mode, sourceUrl.trim());
+        mode === "github"
+          ? await importGitHubRepo(selectedRepo, name.trim() || undefined)
+          : mode === "drive"
+            ? await importDriveZipFile(selectedDriveFile, name.trim() || undefined)
+            : await importProject(name.trim(), mode, sourceUrl.trim());
       reset();
       await onRegistered(project.id);
     } catch (err) {
@@ -149,7 +148,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       }
     >
       <div className="flex w-full gap-1 text-xs">
-        {(["local", "git", "zip", "github", "drive"] as const).map((m) => (
+        {(["zip", "git", "github", "drive"] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -315,35 +314,20 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
             />
           </div>
 
-          {mode === "local" ? (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-path">
-                Absolute path
-              </label>
-              <input
-                id="register-project-path"
-                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                value={rootPath}
-                onChange={(e) => setRootPath(e.target.value)}
-                placeholder="/home/me/projects/my-app"
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-url">
-                {mode === "git" ? "Git URL" : "Zip download URL"}
-              </label>
-              <input
-                id="register-project-url"
-                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder={
-                  mode === "git" ? "https://github.com/user/repo.git" : "https://example.com/repo/archive.zip"
-                }
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-project-url">
+              {mode === "git" ? "Git URL" : "Zip download URL"}
+            </label>
+            <input
+              id="register-project-url"
+              className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder={
+                mode === "git" ? "https://github.com/user/repo.git" : "https://example.com/repo/archive.zip"
+              }
+            />
+          </div>
         </>
       )}
 
@@ -357,26 +341,18 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
         className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
       >
         {submitting
-          ? mode === "local"
-            ? "Registering…"
-            : mode === "git"
-              ? "Cloning…"
-              : mode === "github"
-                ? "Cloning…"
-                : "Downloading…"
+          ? mode === "git" || mode === "github"
+            ? "Cloning…"
+            : "Downloading…"
           : "Register & continue"}
       </button>
       {formError && <p className="w-full text-sm text-red-600 dark:text-red-400">{formError}</p>}
-      {(mode === "git" || mode === "zip" || mode === "github" || mode === "drive") && !formError && (
+      {!formError && (
         <p className="w-full text-xs text-slate-400">
-          {mode === "git"
+          {mode === "git" || mode === "github"
             ? "Cloning a large repository"
-            : mode === "zip"
-              ? "Downloading and extracting a large archive"
-              : mode === "github"
-                ? "Cloning a large repository"
-                : "Downloading and extracting a large archive"}{" "}
-          can take a minute — everything stays on this machine, nothing is uploaded anywhere.
+            : "Downloading and extracting a large archive"}{" "}
+          can take a minute — everything stays on this server, nothing is uploaded to your browser.
         </p>
       )}
     </form>

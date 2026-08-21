@@ -12,27 +12,27 @@ vi.mock("../lib/api", async () => {
   return {
     ...actual,
     listProjects: vi.fn(),
-    createProject: vi.fn(),
+    importProject: vi.fn(),
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
+    runProjectAnalysis: vi.fn(),
     deleteProject: vi.fn(),
     getCurrentUser: vi.fn(),
     detectSubProjects: vi.fn(),
     registerSubProject: vi.fn(),
-    updateProjectApplyMode: vi.fn(),
   };
 });
 
 const mockedApi = api as unknown as {
   listProjects: ReturnType<typeof vi.fn>;
-  createProject: ReturnType<typeof vi.fn>;
+  importProject: ReturnType<typeof vi.fn>;
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
+  runProjectAnalysis: ReturnType<typeof vi.fn>;
   deleteProject: ReturnType<typeof vi.fn>;
   getCurrentUser: ReturnType<typeof vi.fn>;
   detectSubProjects: ReturnType<typeof vi.fn>;
   registerSubProject: ReturnType<typeof vi.fn>;
-  updateProjectApplyMode: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
@@ -51,13 +51,24 @@ describe("RepositoriesPage", () => {
   beforeEach(() => {
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [] });
-    mockedApi.createProject.mockReset();
-    mockedApi.discoverProject.mockReset();
-    mockedApi.indexProject.mockReset();
+    mockedApi.importProject.mockReset();
+    // Registering (via the auto-scan setting, on by default) triggers a
+    // discover+index right after — give these harmless defaults so tests
+    // that don't care about scanning aren't tripped up by it.
+    mockedApi.discoverProject.mockReset().mockResolvedValue({});
+    mockedApi.indexProject.mockReset().mockResolvedValue({
+      totalFiles: 0,
+      testFiles: 0,
+      generatedFiles: 0,
+      indexedAt: "now",
+    });
+    mockedApi.runProjectAnalysis.mockReset().mockResolvedValue({
+      run: { id: "r0", project_id: "p0", started_at: "now", finished_at: "now", status: "completed", findings_count: 0, critical_count: 0, high_count: 0, medium_count: 0, low_count: 0 },
+      findingsCount: 0,
+    });
     mockedApi.deleteProject.mockReset();
     mockedApi.detectSubProjects.mockReset();
     mockedApi.registerSubProject.mockReset();
-    mockedApi.updateProjectApplyMode.mockReset();
     window.localStorage.clear();
   });
 
@@ -66,12 +77,16 @@ describe("RepositoriesPage", () => {
     expect(await screen.findByText("No repositories registered yet.")).toBeInTheDocument();
   });
 
-  it("registers a new repository and lists it", async () => {
-    mockedApi.listProjects.mockResolvedValueOnce({ projects: [] }).mockResolvedValueOnce({
-      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
+  it("registers a new repository (via Zip URL, the default tab) and lists it", async () => {
+    mockedApi.listProjects.mockResolvedValueOnce({ projects: [] }).mockResolvedValue({
+      // Not "Once" — handleRegistered's auto-scan (on by default) refreshes
+      // the project list an extra time after registering, so this needs to
+      // keep answering with the registered project for every call after
+      // the first (empty) one, not just a single follow-up call.
+      projects: [{ id: "p1", name: "my-app", root_path: "/data/my-app", created_at: "now", apply_mode: "download" }],
     });
-    mockedApi.createProject.mockResolvedValue({
-      project: { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" },
+    mockedApi.importProject.mockResolvedValue({
+      project: { id: "p1", name: "my-app", root_path: "/data/my-app", created_at: "now", apply_mode: "download" },
     });
 
     renderPage();
@@ -79,12 +94,12 @@ describe("RepositoriesPage", () => {
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Name"), "my-app");
-    await user.type(screen.getByLabelText("Absolute path"), "/tmp/my-app");
+    await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/archive.zip");
     await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
-    expect(mockedApi.createProject).toHaveBeenCalledWith("my-app", "/tmp/my-app");
+    expect(mockedApi.importProject).toHaveBeenCalledWith("my-app", "zip", "https://example.com/archive.zip");
     expect(await screen.findByText("my-app")).toBeInTheDocument();
-    expect(screen.getByText("/tmp/my-app")).toBeInTheDocument();
+    expect(screen.getByText("/data/my-app")).toBeInTheDocument();
   });
 
   it("shows a form error when a field is missing", async () => {
@@ -94,13 +109,11 @@ describe("RepositoriesPage", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
-    expect(
-      await screen.findByText("Both a name and an absolute repository path are required.")
-    ).toBeInTheDocument();
-    expect(mockedApi.createProject).not.toHaveBeenCalled();
+    expect(await screen.findByText("Both a name and a zip URL are required.")).toBeInTheDocument();
+    expect(mockedApi.importProject).not.toHaveBeenCalled();
   });
 
-  it("scans a repository via discover + index", async () => {
+  it("scans a repository via discover + index + analysis, so findings are ready right away", async () => {
     mockedApi.listProjects.mockResolvedValue({
       projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
     });
@@ -111,6 +124,10 @@ describe("RepositoriesPage", () => {
       generatedFiles: 0,
       indexedAt: "now",
     });
+    mockedApi.runProjectAnalysis.mockResolvedValue({
+      run: { id: "r1", project_id: "p1", started_at: "now", finished_at: "now", status: "completed", findings_count: 3, critical_count: 0, high_count: 1, medium_count: 2, low_count: 0 },
+      findingsCount: 3,
+    });
 
     renderPage();
     const user = userEvent.setup();
@@ -119,8 +136,9 @@ describe("RepositoriesPage", () => {
 
     await waitFor(() => expect(mockedApi.discoverProject).toHaveBeenCalledWith("p1"));
     expect(mockedApi.indexProject).toHaveBeenCalledWith("p1");
+    expect(mockedApi.runProjectAnalysis).toHaveBeenCalledWith("p1");
     expect(
-      await screen.findByText("Scanned 5 files (1 test, 0 generated).")
+      await screen.findByText("Scanned 5 files (1 test, 0 generated) — 3 findings.")
     ).toBeInTheDocument();
   });
 
@@ -213,21 +231,15 @@ describe("RepositoriesPage", () => {
     expect(mockedApi.detectSubProjects).toHaveBeenCalledTimes(1);
   });
 
-  it("changes a project's apply mode (Task #90)", async () => {
+  it("shows the AI apply mode as a static \"Download as zip\" label (no server-filesystem write on this deployment)", async () => {
     mockedApi.listProjects.mockResolvedValue({
-      projects: [{ id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "direct" }],
-    });
-    mockedApi.updateProjectApplyMode.mockResolvedValue({
-      project: { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now", apply_mode: "download" },
+      projects: [{ id: "p1", name: "my-app", root_path: "/data/my-app", created_at: "now", apply_mode: "download" }],
     });
 
     renderPage();
-    const user = userEvent.setup();
     await screen.findByText("my-app");
 
-    const select = screen.getByLabelText("AI apply:");
-    await user.selectOptions(select, "download");
-
-    expect(mockedApi.updateProjectApplyMode).toHaveBeenCalledWith("p1", "download");
+    expect(screen.getByText("Download as zip")).toBeInTheDocument();
+    expect(screen.queryByLabelText("AI apply:")).not.toBeInTheDocument();
   });
 });

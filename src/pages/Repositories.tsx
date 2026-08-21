@@ -4,12 +4,13 @@ import {
   deleteProject,
   discoverProject,
   indexProject,
+  runProjectAnalysis,
   detectSubProjects,
   registerSubProject,
-  updateProjectApplyMode,
   type MultiProjectDetectionResult,
 } from "../lib/api";
 import { ApiError } from "../lib/api";
+import { getAutoScanOnRegister } from "../lib/settings";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
 
@@ -22,11 +23,16 @@ export default function RepositoriesPage() {
   const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
   const [detectingId, setDetectingId] = useState<string | null>(null);
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
-  const [applyModeSavingId, setApplyModeSavingId] = useState<string | null>(null);
 
   async function handleRegistered(projectId: string) {
     await refresh();
     selectProject(projectId);
+    // "Auto-scan after registering" (Settings) — on by default so a newly
+    // registered repo shows findings/dependencies/Git activity right away
+    // instead of requiring a separate manual "Scan" click.
+    if (getAutoScanOnRegister()) {
+      await handleDiscoverAndIndex(projectId);
+    }
   }
 
   async function handleDiscoverAndIndex(projectId: string) {
@@ -35,8 +41,15 @@ export default function RepositoriesPage() {
     try {
       await discoverProject(projectId);
       const summary = await indexProject(projectId);
+      // "Scan" used to only discover+index files (languages, build system,
+      // Git branch, etc.) and leave findings for a separate, easy-to-miss
+      // "Run Analysis" click on the Findings page. Running the same
+      // deterministic analysis here too means findings are ready the
+      // moment a scan finishes — Run Analysis on the Findings page still
+      // works exactly as before for a manual re-run.
+      const analysis = await runProjectAnalysis(projectId);
       setActionMessage(
-        `Scanned ${summary.totalFiles} files (${summary.testFiles} test, ${summary.generatedFiles} generated).`
+        `Scanned ${summary.totalFiles} files (${summary.testFiles} test, ${summary.generatedFiles} generated) — ${analysis.findingsCount} finding${analysis.findingsCount === 1 ? "" : "s"}.`
       );
       await refresh();
     } catch (err) {
@@ -80,19 +93,6 @@ export default function RepositoriesPage() {
       setActionMessage(err instanceof ApiError ? err.message : "Failed to register the nested project.");
     } finally {
       setRegisteringKey(null);
-    }
-  }
-
-  async function handleApplyModeChange(projectId: string, applyMode: "direct" | "download") {
-    setApplyModeSavingId(projectId);
-    setActionMessage(null);
-    try {
-      await updateProjectApplyMode(projectId, applyMode);
-      await refresh();
-    } catch (err) {
-      setActionMessage(err instanceof ApiError ? err.message : "Failed to update the apply-mode setting.");
-    } finally {
-      setApplyModeSavingId(null);
     }
   }
 
@@ -148,19 +148,21 @@ export default function RepositoriesPage() {
                     <div className="text-xs text-slate-500">{project.root_path}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-slate-500" htmlFor={`apply-mode-${project.id}`}>
-                      AI apply:
-                      <select
-                        id={`apply-mode-${project.id}`}
-                        className="rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-700 disabled:opacity-50"
-                        value={project.apply_mode}
-                        disabled={applyModeSavingId === project.id}
-                        onChange={(e) => handleApplyModeChange(project.id, e.target.value as "direct" | "download")}
-                      >
-                        <option value="direct">Direct to disk</option>
-                        <option value="download">Download as zip</option>
-                      </select>
-                    </label>
+                    {/*
+                      "Direct to disk" used to be a selectable option here,
+                      but this instance runs on a remote server — writing
+                      an approved AI-Mode patch "directly to disk" would
+                      write it into the *server's* filesystem, not the
+                      user's own machine, which isn't useful and was
+                      confusing. Every project now runs in "download as
+                      zip" mode (createProject defaults new projects to it,
+                      migration 017 flipped existing ones), so this is a
+                      static label rather than a dropdown with only one
+                      real choice.
+                    */}
+                    <span className="flex items-center gap-1 text-xs text-slate-500">
+                      AI apply: <span className="font-medium text-slate-700">Download as zip</span>
+                    </span>
                     {busyProjectId === project.id && (
                       <ActivityIndicator label="Discovering & indexing files" />
                     )}

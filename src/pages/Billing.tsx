@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
 import { ApiError, createBillingCheckout, getBillingStatus } from "../lib/api";
 import type { BillingStatus } from "../lib/types";
+import { getAutoScanOnRegister, setAutoScanOnRegister } from "../lib/settings";
 
 export default function BillingPage() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A local-only preference (this browser's localStorage — see
+  // lib/settings.ts), not billing-related, but this "Settings" page is
+  // the only settings screen the app has, so it lives here rather than a
+  // brand-new page for a single toggle.
+  const [autoScan, setAutoScan] = useState(() => getAutoScanOnRegister());
+
+  function handleAutoScanChange(value: boolean) {
+    setAutoScan(value);
+    setAutoScanOnRegister(value);
+  }
 
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -48,7 +60,34 @@ export default function BillingPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-slate-900">Settings — Billing</h1>
+      <h1 className="text-lg font-semibold text-slate-900">Settings</h1>
+
+      <section>
+        <h2 className="text-sm font-semibold text-slate-900">Repositories</h2>
+        <p className="mt-1 max-w-2xl text-sm text-slate-500">
+          Controls what happens right after registering a repository (Zip URL, Git URL, GitHub, or
+          Google Drive, from the Dashboard or the Repositories page).
+        </p>
+        <label className="mt-3 flex items-start gap-2 rounded border border-slate-200 bg-white p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={autoScan}
+            onChange={(e) => handleAutoScanChange(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium text-slate-900">Automatically scan after registering</span>
+            <span className="block text-xs text-slate-500">
+              When on (the default), a newly registered repository is discovered and indexed right
+              away, so findings, dependencies, and Git activity are ready immediately instead of
+              requiring a separate manual "Scan" click. Turn this off to register without scanning
+              and trigger it yourself later.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <h2 className="mt-6 text-sm font-semibold text-slate-900">Billing</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-500">
         Billing is entirely optional. Free Mode and AI Mode using your own provider keys keep
         working exactly the same whether billing is configured or not — see docs/MONETIZATION.md.

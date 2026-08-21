@@ -12,6 +12,7 @@ import {
   indexProject,
   listFiles,
   listFindings,
+  runProjectAnalysis,
 } from "../lib/api";
 import {
   parseSnapshot,
@@ -29,6 +30,7 @@ import {
 } from "../components/Charts";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
+import { getAutoScanOnRegister } from "../lib/settings";
 
 export default function DashboardPage() {
   const {
@@ -149,13 +151,19 @@ export default function DashboardPage() {
     // needing `selectedProject` itself to change identity.
   }, [selectedProject, scanVersion]);
 
-  async function handleScanNow() {
-    if (!selectedProject) return;
+  // Discover + index + run the (deterministic, no-AI-required) analysis
+  // that produces findings — used to only discover+index here, leaving
+  // findings to a separate, easy-to-miss "Run Analysis" click on the
+  // Findings page. Folding analysis into "Scan" means findings are ready
+  // the moment a scan finishes; Findings' own "Run Analysis" button still
+  // works exactly as before for a manual re-run.
+  async function scanProject(projectId: string) {
     setScanning(true);
     setScanError(null);
     try {
-      await discoverProject(selectedProject.id);
-      await indexProject(selectedProject.id);
+      await discoverProject(projectId);
+      await indexProject(projectId);
+      await runProjectAnalysis(projectId);
       await refreshProjects();
       setScanVersion((v) => v + 1);
     } catch (err) {
@@ -163,6 +171,30 @@ export default function DashboardPage() {
     } finally {
       setScanning(false);
     }
+  }
+
+  // Bug fix: this used to call `selectProject(id)` alone, without
+  // refreshing the projects list first — `selectedProject` is derived by
+  // looking `selectedProjectId` up in `projects` (ProjectContext.tsx), so
+  // a just-registered project (not yet in that list) resolved to nothing
+  // and the page silently stayed on the "Welcome" screen until a manual
+  // page reload re-fetched the list. Refreshing first, then selecting,
+  // means the newly registered repo's workspace renders immediately.
+  // Also runs the "auto-scan after registering" setting (see
+  // lib/settings.ts) so a fresh registration shows real findings/
+  // dependencies/Git activity right away instead of an empty
+  // "hasn't been scanned yet" screen requiring a separate click.
+  async function handleRegistered(projectId: string) {
+    await refreshProjects();
+    selectProject(projectId);
+    if (getAutoScanOnRegister()) {
+      await scanProject(projectId);
+    }
+  }
+
+  async function handleScanNow() {
+    if (!selectedProject) return;
+    await scanProject(selectedProject.id);
   }
 
   async function handleRemoveProject(projectId: string) {
@@ -206,7 +238,7 @@ export default function DashboardPage() {
           </p>
           <div className="mt-4 max-w-3xl">
             <RegisterProjectForm
-              onRegistered={(id) => selectProject(id)}
+              onRegistered={handleRegistered}
               className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
             />
           </div>

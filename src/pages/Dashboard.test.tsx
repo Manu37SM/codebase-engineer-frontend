@@ -17,9 +17,10 @@ vi.mock("../lib/api", async () => {
     getDependencies: vi.fn(),
     listFindings: vi.fn(),
     getAnalysisHistory: vi.fn(),
-    createProject: vi.fn(),
+    importProject: vi.fn(),
     discoverProject: vi.fn(),
     indexProject: vi.fn(),
+    runProjectAnalysis: vi.fn(),
     deleteProject: vi.fn(),
     getCurrentUser: vi.fn(),
   };
@@ -33,9 +34,10 @@ const mockedApi = api as unknown as {
   getDependencies: ReturnType<typeof vi.fn>;
   listFindings: ReturnType<typeof vi.fn>;
   getAnalysisHistory: ReturnType<typeof vi.fn>;
-  createProject: ReturnType<typeof vi.fn>;
+  importProject: ReturnType<typeof vi.fn>;
   discoverProject: ReturnType<typeof vi.fn>;
   indexProject: ReturnType<typeof vi.fn>;
+  runProjectAnalysis: ReturnType<typeof vi.fn>;
   deleteProject: ReturnType<typeof vi.fn>;
   getCurrentUser: ReturnType<typeof vi.fn>;
 };
@@ -89,9 +91,13 @@ describe("DashboardPage", () => {
     mockedApi.listFindings.mockResolvedValue({ findings: [], total: 0, latestRun: null });
     mockedApi.getAnalysisHistory.mockReset();
     mockedApi.getAnalysisHistory.mockResolvedValue({ runs: [] });
-    mockedApi.createProject.mockReset();
+    mockedApi.importProject.mockReset();
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
+    mockedApi.runProjectAnalysis.mockReset().mockResolvedValue({
+      run: { id: "r0", project_id: "p0", started_at: "now", finished_at: "now", status: "completed", findings_count: 0, critical_count: 0, high_count: 0, medium_count: 0, low_count: 0 },
+      findingsCount: 0,
+    });
     mockedApi.deleteProject.mockReset();
     window.localStorage.clear();
   });
@@ -100,7 +106,7 @@ describe("DashboardPage", () => {
     mockedApi.listProjects.mockResolvedValue({ projects: [] });
     renderPage();
     expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Absolute path")).toBeInTheDocument();
+    expect(screen.getByLabelText("Zip download URL")).toBeInTheDocument();
   });
 
   it("offers a one-click picker when repositories exist but none is selected", async () => {
@@ -166,6 +172,9 @@ describe("DashboardPage", () => {
 
     await waitFor(() => expect(mockedApi.discoverProject).toHaveBeenCalledWith("p1"));
     expect(mockedApi.indexProject).toHaveBeenCalledWith("p1");
+    // Scan also runs the deterministic analysis that produces findings —
+    // no separate "Run Analysis" click needed to see results.
+    expect(mockedApi.runProjectAnalysis).toHaveBeenCalledWith("p1");
   });
 
   it("renders a full dashboard summary from a snapshot", async () => {
