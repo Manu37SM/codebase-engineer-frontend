@@ -1,12 +1,49 @@
 import { useEffect, useState } from "react";
-import { ApiError, createBillingCheckout, getBillingStatus } from "../lib/api";
+import {
+  ApiError,
+  createBillingCheckout,
+  getAuthProviders,
+  getBillingStatus,
+  getGitHubSignInUrl,
+  getGoogleSignInUrl,
+} from "../lib/api";
 import type { BillingStatus } from "../lib/types";
 import { getAutoScanOnRegister, setAutoScanOnRegister } from "../lib/settings";
+import { useAuth } from "../context/AuthContext";
 
 export default function BillingPage() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // "Connected accounts" (per the user's explicit request that the
+  // password-registered account should stay the one and only account, with
+  // GitHub/Google as optional add-ons rather than alternate sign-in
+  // identities that silently take over the session). This deliberately
+  // reuses the exact same `getGitHubSignInUrl()`/`getGoogleSignInUrl()`
+  // hrefs the Login/Register pages use — no new backend route needed.
+  // `oauthGithub.ts`/`oauthGoogle.ts` already resolve the current session
+  // (via `resolveCurrentUserId`) before deciding whether to sign in as a
+  // different user or link the identity onto the one already logged in; a
+  // logged-in user clicking these now *links*, not switches. See those
+  // files' account-linking doc comments for the fix this section depends
+  // on.
+  const { user, refresh: refreshAuth } = useAuth();
+  const [oauthProviders, setOauthProviders] = useState({ google: false, github: false });
+
+  useEffect(() => {
+    getAuthProviders()
+      .then(setOauthProviders)
+      .catch(() => setOauthProviders({ google: false, github: false }));
+  }, []);
+
+  // After bouncing back from a provider's OAuth callback, `user` (and its
+  // githubConnected/driveConnected flags) needs a fresh `/auth/me` read —
+  // the AuthProvider only fetches it once on mount, before the redirect.
+  useEffect(() => {
+    refreshAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A local-only preference (this browser's localStorage — see
   // lib/settings.ts), not billing-related, but this "Settings" page is
@@ -86,6 +123,63 @@ export default function BillingPage() {
           </span>
         </label>
       </section>
+
+      {(oauthProviders.google || oauthProviders.github) && (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold text-slate-900">Connected accounts</h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Your account is the one you registered with (email + password) — GitHub and Google are
+            optional add-ons for it, not separate logins. Connecting one here links it onto this
+            same account instead of switching you to a different one.
+          </p>
+          <div className="mt-3 space-y-2">
+            {oauthProviders.github && (
+              <div className="flex items-center justify-between rounded border border-slate-200 bg-white p-3 text-sm">
+                <div>
+                  <span className="font-medium text-slate-900">GitHub</span>
+                  <span className="ml-2 text-xs text-slate-500">
+                    Used for signing in and browsing your repos to register them.
+                  </span>
+                </div>
+                {user?.githubConnected ? (
+                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    Connected
+                  </span>
+                ) : (
+                  <a
+                    href={getGitHubSignInUrl()}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Connect GitHub
+                  </a>
+                )}
+              </div>
+            )}
+            {oauthProviders.google && (
+              <div className="flex items-center justify-between rounded border border-slate-200 bg-white p-3 text-sm">
+                <div>
+                  <span className="font-medium text-slate-900">Google</span>
+                  <span className="ml-2 text-xs text-slate-500">
+                    Used for signing in and browsing Google Drive to import a zip.
+                  </span>
+                </div>
+                {user?.driveConnected ? (
+                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    Connected
+                  </span>
+                ) : (
+                  <a
+                    href={getGoogleSignInUrl()}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Connect Google
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <h2 className="mt-6 text-sm font-semibold text-slate-900">Billing</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-500">

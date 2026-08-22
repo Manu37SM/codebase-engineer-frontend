@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
-import { useTheme } from "../context/ThemeContext";
 
 /** Dispatch `new CustomEvent(OPEN_EVENT)` from anywhere to open the palette imperatively (e.g. a visible button). */
 export const OPEN_EVENT = "codebase-engineer:open-command-palette";
@@ -15,7 +14,7 @@ interface Command {
 }
 
 const PAGES: { to: string; label: string }[] = [
-  { to: "/", label: "Workspace" },
+  { to: "/", label: "Dashboard" },
   { to: "/repositories", label: "Repositories" },
   { to: "/architecture", label: "Architecture" },
   { to: "/findings", label: "Findings" },
@@ -28,15 +27,20 @@ const PAGES: { to: string; label: string }[] = [
 
 /**
  * A Cmd/Ctrl+K command palette (Task #77) for keyboard-driven navigation —
- * jump to any page, switch the selected repository, or toggle the theme
- * without touching the mouse. Mounted once in `NavShell` so it's always
- * available regardless of which page is showing.
+ * jump to any page or switch the selected repository without touching the
+ * mouse. Mounted once in `NavShell` so it's always available regardless of
+ * which page is showing.
+ *
+ * The theme-toggle command this used to include was removed (dark mode is
+ * now the only mode — see ThemeContext.tsx) but the palette itself stays:
+ * only that one command was cut, per explicit follow-up instruction, not
+ * the whole feature.
  *
  * Deliberately simple: a case-insensitive substring filter over a small,
- * static command list (page nav + real registered projects + theme
- * toggle), not a fuzzy-match library — the command list here is small
- * enough (under a few dozen entries even with many repositories
- * registered) that a substring filter is both fast and predictable.
+ * static command list (page nav + real registered projects), not a
+ * fuzzy-match library — the command list here is small enough (under a few
+ * dozen entries even with many repositories registered) that a substring
+ * filter is both fast and predictable.
  */
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -45,7 +49,6 @@ export default function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { projects, selectedProjectId, selectProject } = useProjects();
-  const { toggleTheme, resolvedTheme } = useTheme();
 
   // Global open/close shortcut — Cmd+K on macOS, Ctrl+K everywhere else.
   // Registered once for the app's lifetime (empty dep array); the handler
@@ -100,40 +103,39 @@ export default function CommandPalette() {
       run: () => selectProject(p.id),
     }));
 
-    const themeCommand: Command = {
-      id: "theme:toggle",
-      label: resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode",
-      hint: "Toggle theme",
-      run: toggleTheme,
-    };
-
-    return [...nav, ...projectCommands, themeCommand];
-  }, [projects, selectedProjectId, selectProject, navigate, resolvedTheme, toggleTheme]);
+    return [...nav, ...projectCommands];
+  }, [projects, selectedProjectId, selectProject, navigate]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return commands;
     return commands.filter(
-      (c) => c.label.toLowerCase().includes(q) || c.keywords?.toLowerCase().includes(q)
+      (c) => c.label.toLowerCase().includes(q) || c.hint?.toLowerCase().includes(q) || c.keywords?.toLowerCase().includes(q)
     );
   }, [commands, query]);
 
-  function runCommand(cmd: Command) {
-    cmd.run();
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  function runCommand(command: Command) {
+    command.run();
     setOpen(false);
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+      setActiveIndex((prev) => (filtered.length === 0 ? 0 : (prev + 1) % filtered.length));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
+      setActiveIndex((prev) => (filtered.length === 0 ? 0 : (prev - 1 + filtered.length) % filtered.length));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const cmd = filtered[activeIndex];
-      if (cmd) runCommand(cmd);
+      const command = filtered[activeIndex];
+      if (command) runCommand(command);
+    } else if (e.key === "Escape") {
+      setOpen(false);
     }
   }
 
@@ -141,56 +143,45 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/60 p-4 pt-24"
       onClick={() => setOpen(false)}
-      role="presentation"
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        className="w-full max-w-lg overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl"
         onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Command palette"
       >
         <input
           ref={inputRef}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setActiveIndex(0);
-          }}
-          onKeyDown={handleInputKeyDown}
-          placeholder="Go to a page, switch repository, or toggle theme…"
           aria-label="Command palette search"
-          className="w-full border-b border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder="Go to a page, or switch repository…"
+          className="w-full border-b border-slate-700 bg-transparent px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
         />
-        <ul role="listbox" className="max-h-80 overflow-y-auto py-1">
-          {filtered.length === 0 && (
-            <li className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">No matches.</li>
-          )}
-          {filtered.map((cmd, i) => (
-            <li key={cmd.id}>
+        <ul className="max-h-72 overflow-y-auto">
+          {filtered.map((command, i) => (
+            <li key={command.id}>
               <button
-                role="option"
-                aria-selected={i === activeIndex}
+                type="button"
+                onClick={() => runCommand(command)}
                 onMouseEnter={() => setActiveIndex(i)}
-                onClick={() => runCommand(cmd)}
                 className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
-                  i === activeIndex
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "text-slate-700 dark:text-slate-200"
+                  i === activeIndex ? "bg-slate-100 text-slate-900" : "text-slate-200"
                 }`}
               >
-                <span>{cmd.label}</span>
-                {cmd.hint && (
-                  <span className={i === activeIndex ? "text-slate-300 dark:text-slate-600" : "text-slate-400"}>
-                    {cmd.hint}
-                  </span>
-                )}
+                <span>{command.label}</span>
+                {command.hint && <span className="text-xs text-slate-400">{command.hint}</span>}
               </button>
             </li>
           ))}
+          {filtered.length === 0 && (
+            <li className="px-4 py-3 text-sm text-slate-500">No matching pages or repositories.</li>
+          )}
         </ul>
-        <div className="border-t border-slate-200 px-4 py-2 text-xs text-slate-400 dark:border-slate-700">
+        <div className="border-t border-slate-700 px-4 py-2 text-xs text-slate-500">
           ↑↓ to navigate · Enter to select · Esc to close
         </div>
       </div>

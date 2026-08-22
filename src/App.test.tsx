@@ -36,7 +36,7 @@ describe("App shell", () => {
   beforeEach(() => {
     mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [] });
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
-    mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false, turnstile: false });
+    mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false });
   });
 
   it("renders the top-level navigation sections without crashing", async () => {
@@ -45,7 +45,7 @@ describe("App shell", () => {
     expect(await screen.findByText("Codebase Engineer")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Primary" });
     for (const label of [
-      "Workspace",
+      "Dashboard",
       "Repositories",
       "Architecture",
       "Findings",

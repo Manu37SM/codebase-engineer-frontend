@@ -12,8 +12,10 @@ import {
   createGeneratedTest,
   createPatch,
   explainFinding,
+  fixAllFindings,
   generatePatch,
   generateTest,
+  getBillingStatus,
   getPatchDownloadZipUrl,
   getFindingContext,
   getFindingExplanation,
@@ -33,6 +35,7 @@ import {
   selfReviewPatch,
   writeAndRunGeneratedTest,
 } from "../lib/api";
+import BulkAiFixButton from "../components/BulkAiFixButton";
 import type {
   ContextBundle,
   FindingRecord,
@@ -53,7 +56,7 @@ const SEVERITY_STYLES: Record<Severity, string> = {
 };
 
 const SEVERITY_OPTIONS: Severity[] = ["critical", "high", "medium", "low"];
-const CATEGORY_OPTIONS = ["maintainability", "testing", "security"];
+const CATEGORY_OPTIONS = ["maintainability", "testing", "security", "documentation", "dependencies"];
 
 export default function FindingsPage() {
   const { selectedProject } = useProjects();
@@ -107,6 +110,17 @@ export default function FindingsPage() {
     listAiProviders()
       .then((res) => setHasEnabledProvider(res.providers.some((p) => p.enabled)))
       .catch(() => setHasEnabledProvider(false));
+  }, []);
+
+  // "Fix all findings" (per the user's explicit request) is Pro-tier only —
+  // fetched the same way Billing.tsx already reads tier, just to decide
+  // whether to render the button at all (the server enforces the real
+  // gate regardless of what this client shows).
+  const [tier, setTier] = useState<"free" | "pro" | null>(null);
+  useEffect(() => {
+    getBillingStatus()
+      .then((res) => setTier(res.tier))
+      .catch(() => setTier(null));
   }, []);
 
   function load() {
@@ -578,6 +592,15 @@ export default function FindingsPage() {
         <h1 className="text-lg font-semibold text-slate-900">Findings</h1>
         <div className="flex items-center gap-3">
           {running && <ActivityIndicator label="Scanning the repository for findings" />}
+          {tier === "pro" && selectedProject && findings.length > 0 && (
+            <BulkAiFixButton
+              label="Fix all findings"
+              itemDescription={`${total} finding${total === 1 ? "" : "s"} in this repository`}
+              disabled={!hasEnabledProvider}
+              onRun={() => fixAllFindings(selectedProject.id)}
+              onDone={load}
+            />
+          )}
           <button
             onClick={handleRunAnalysis}
             disabled={running}

@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import CommandPalette, { OPEN_EVENT } from "./CommandPalette";
 
 const NAV_SECTIONS = [
-  { to: "/", label: "Workspace", icon: "⌂" },
+  { to: "/", label: "Dashboard", icon: "⌂" },
   { to: "/repositories", label: "Repositories", icon: "▤" },
   { to: "/architecture", label: "Architecture", icon: "◈" },
   { to: "/findings", label: "Findings", icon: "⚑" },
@@ -27,10 +26,8 @@ function readPersistedCollapsed(): boolean {
 }
 
 export default function NavShell() {
-  const { resolvedTheme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const isDark = resolvedTheme === "dark";
   // Task #88: icon-only collapsible sidebar, persisted across reloads —
   // same "same behavior as devtoolbox" request as the earlier dark-mode
   // and command-palette additions.
@@ -61,35 +58,28 @@ export default function NavShell() {
           collapsed ? "w-14 px-2" : "w-56 px-3"
         }`}
       >
-        <div className={`mb-6 flex items-center px-2 ${collapsed ? "flex-col gap-2" : "justify-between"}`}>
+        <div className={`mb-6 flex items-center px-2 ${collapsed ? "justify-center" : "justify-between"}`}>
           {!collapsed && (
             <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
               Codebase Engineer
             </span>
           )}
           <button
-            onClick={toggleTheme}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            onClick={toggleCollapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
-            {isDark ? "☀" : "☾"}
+            <span aria-hidden="true" className="text-xs">
+              {collapsed ? "»" : "«"}
+            </span>
           </button>
         </div>
 
         <button
-          onClick={toggleCollapsed}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="mb-4 flex items-center justify-center rounded border border-slate-200 px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-        >
-          {collapsed ? "»" : "« Collapse"}
-        </button>
-
-        <button
           onClick={() => window.dispatchEvent(new CustomEvent(OPEN_EVENT))}
           title="Search (⌘K)"
-          className={`mb-4 flex items-center rounded border border-slate-200 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 ${
+          className={`mt-4 mb-4 flex items-center rounded border border-slate-200 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 ${
             collapsed ? "justify-center px-1.5" : "justify-between px-2"
           }`}
         >

@@ -34,9 +34,10 @@ describe("AiProviderReminder (nudge shown after registering, per the user's requ
     mockedApi.listAiProviders.mockResolvedValue({ providers: [] });
     renderReminder();
 
-    expect(await screen.findByText(/No AI provider is set up yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add a provider now" })).toHaveAttribute("href", "/ai-mode");
-    expect(screen.getByRole("button", { name: "Add later" })).toBeInTheDocument();
+    expect(await screen.findByText("An AI provider is necessary")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Register AI provider now!" })).toHaveAttribute("href", "/ai-mode");
+    expect(screen.getByRole("button", { name: "Skip / Add later" })).toBeInTheDocument();
   });
 
   it("stays hidden when a provider already exists — this is a nudge, not a nag", async () => {
@@ -46,7 +47,7 @@ describe("AiProviderReminder (nudge shown after registering, per the user's requ
     renderReminder();
 
     await waitFor(() => expect(mockedApi.listAiProviders).toHaveBeenCalled());
-    expect(screen.queryByText(/No AI provider is set up yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText("An AI provider is necessary")).not.toBeInTheDocument();
   });
 
   it("fails safe (stays hidden) if the provider check itself errors, rather than nagging incorrectly", async () => {
@@ -54,16 +55,16 @@ describe("AiProviderReminder (nudge shown after registering, per the user's requ
     renderReminder();
 
     await waitFor(() => expect(mockedApi.listAiProviders).toHaveBeenCalled());
-    expect(screen.queryByText(/No AI provider is set up yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText("An AI provider is necessary")).not.toBeInTheDocument();
   });
 
-  it("calls onDismiss when \"Add later\" is clicked", async () => {
+  it("calls onDismiss when \"Skip / Add later\" is clicked", async () => {
     mockedApi.listAiProviders.mockResolvedValue({ providers: [] });
     const onDismiss = vi.fn();
     renderReminder(onDismiss);
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Add later" }));
+    await user.click(await screen.findByRole("button", { name: "Skip / Add later" }));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });

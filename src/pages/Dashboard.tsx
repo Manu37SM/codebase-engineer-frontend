@@ -226,7 +226,7 @@ export default function DashboardPage() {
     if (projectsLoading) {
       return (
         <div>
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Workspace</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dashboard</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         </div>
       );

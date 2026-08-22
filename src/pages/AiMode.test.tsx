@@ -56,7 +56,7 @@ describe("AiModePage", () => {
     await waitFor(() => {
       expect(screen.getByText(/No AI provider configured yet/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/every Free Mode feature/)).toBeInTheDocument();
+    expect(screen.getByText(/A provider is required to get real value/)).toBeInTheDocument();
   });
 
   it("lists a configured provider with its kind, base URL, model, and disabled state", async () => {

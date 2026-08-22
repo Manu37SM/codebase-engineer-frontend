@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BillingPage from "./Billing";
+import { AuthProvider } from "../context/AuthContext";
 import * as api from "../lib/api";
 
 vi.mock("../lib/api", async () => {
@@ -10,16 +11,24 @@ vi.mock("../lib/api", async () => {
     ...actual,
     getBillingStatus: vi.fn(),
     createBillingCheckout: vi.fn(),
+    getAuthProviders: vi.fn(),
+    getCurrentUser: vi.fn(),
   };
 });
 
 const mockedApi = api as unknown as {
   getBillingStatus: ReturnType<typeof vi.fn>;
   createBillingCheckout: ReturnType<typeof vi.fn>;
+  getAuthProviders: ReturnType<typeof vi.fn>;
+  getCurrentUser: ReturnType<typeof vi.fn>;
 };
 
 function renderPage() {
-  return render(<BillingPage />);
+  return render(
+    <AuthProvider>
+      <BillingPage />
+    </AuthProvider>
+  );
 }
 
 describe("BillingPage", () => {
@@ -34,6 +43,11 @@ describe("BillingPage", () => {
   beforeEach(() => {
     mockedApi.getBillingStatus.mockReset();
     mockedApi.createBillingCheckout.mockReset();
+    // Default: no OAuth providers configured, no session — keeps the
+    // pre-existing billing-only tests unaffected by the new "Connected
+    // accounts" section, which renders nothing in that state.
+    mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false });
+    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     Object.defineProperty(window, "location", {
       configurable: true,
       writable: true,
@@ -151,5 +165,72 @@ describe("BillingPage", () => {
       expect(screen.getByText("Failed to start checkout.")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Upgrade to Pro" })).not.toBeDisabled();
+  });
+
+  describe("Connected accounts (per the user's request that GitHub/Google be add-ons to the registered account, not separate logins)", () => {
+    beforeEach(() => {
+      mockedApi.getBillingStatus.mockResolvedValue({
+        configured: false,
+        tier: "free",
+        limit: null,
+        used: 0,
+        subscription: null,
+      });
+    });
+
+    it("hides the section entirely when no OAuth provider is configured server-side", async () => {
+      mockedApi.getAuthProviders.mockResolvedValue({ google: false, github: false });
+      renderPage();
+
+      await waitFor(() => expect(mockedApi.getAuthProviders).toHaveBeenCalled());
+      expect(screen.queryByText("Connected accounts")).not.toBeInTheDocument();
+    });
+
+    it("offers a Connect link for a configured-but-not-yet-linked provider", async () => {
+      mockedApi.getAuthProviders.mockResolvedValue({ google: true, github: true });
+      mockedApi.getCurrentUser.mockResolvedValue({
+        authRequired: true,
+        user: {
+          id: "u1",
+          email: "manish@example.com",
+          displayName: null,
+          createdAt: "now",
+          githubConnected: false,
+          driveConnected: false,
+        },
+      });
+      renderPage();
+
+      await screen.findByText("Connected accounts");
+      expect(screen.getByRole("link", { name: "Connect GitHub" })).toHaveAttribute(
+        "href",
+        "/api/v1/auth/github/start"
+      );
+      expect(screen.getByRole("link", { name: "Connect Google" })).toHaveAttribute(
+        "href",
+        "/api/v1/auth/google/start"
+      );
+    });
+
+    it("shows Connected instead of a link once a provider is already linked to this account", async () => {
+      mockedApi.getAuthProviders.mockResolvedValue({ google: true, github: true });
+      mockedApi.getCurrentUser.mockResolvedValue({
+        authRequired: true,
+        user: {
+          id: "u1",
+          email: "manish@example.com",
+          displayName: null,
+          createdAt: "now",
+          githubConnected: true,
+          driveConnected: false,
+        },
+      });
+      renderPage();
+
+      await screen.findByText("Connected accounts");
+      expect(screen.getAllByText("Connected")).toHaveLength(1);
+      expect(screen.queryByRole("link", { name: "Connect GitHub" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Connect Google" })).toBeInTheDocument();
+    });
   });
 });

@@ -7,8 +7,10 @@ import {
   approveGeneratedTestWrite,
   approvePatch,
   approvePatchApply,
+  generateAllPatches,
   generatePatch,
   generateTest,
+  getBillingStatus,
   listChanges,
   rejectGeneratedTest,
   rejectGeneratedTestWrite,
@@ -17,6 +19,7 @@ import {
   writeAndRunGeneratedTest,
 } from "../lib/api";
 import type { GeneratedTestWithFindingContext, PatchWithFindingContext } from "../lib/types";
+import BulkAiFixButton from "../components/BulkAiFixButton";
 
 /**
  * The Changes page — a real unified review queue, replacing the old
@@ -58,6 +61,15 @@ export default function ChangesPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load changes"))
       .finally(() => setLoading(false));
   }
+
+  // "Approve & generate all" (per the user's explicit request that this
+  // behave the same way as Findings' "Fix all findings") is Pro-tier only.
+  const [tier, setTier] = useState<"free" | "pro" | null>(null);
+  useEffect(() => {
+    getBillingStatus()
+      .then((res) => setTier(res.tier))
+      .catch(() => setTier(null));
+  }, []);
 
   useEffect(load, [selectedProject]);
 
@@ -110,7 +122,17 @@ export default function ChangesPage() {
             </span>
           )}
         </h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {tier === "pro" && selectedProject && patches.some((p) => p.status === "pending_approval") && (
+            <BulkAiFixButton
+              label="Approve & generate all"
+              itemDescription={`${patches.filter((p) => p.status === "pending_approval").length} pending patch${
+                patches.filter((p) => p.status === "pending_approval").length === 1 ? "" : "es"
+              }`}
+              onRun={() => generateAllPatches(selectedProject.id)}
+              onDone={load}
+            />
+          )}
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as "all" | "pending")}

@@ -336,6 +336,39 @@ export function generatePatch(
   });
 }
 
+/** Shared shape for both Pro-tier bulk-fix actions (Findings' fix-all and Changes' generate-all) — a real per-item outcome list plus real accumulated token usage, never a fabricated estimate. */
+export interface BulkFixResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  /** How many eligible items were left out by the server's per-call safety cap — surfaced, never hidden. */
+  skipped: number;
+  results: Array<{ findingId?: string; patchId: string | null; error: string | null }>;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+/** Pro-tier only (enforced server-side) — see backend/src/routes/projects.ts's "Fix all findings" section. */
+export function fixAllFindings(
+  id: string,
+  options?: { providerId?: string; budgetTokens?: number }
+): Promise<BulkFixResult> {
+  return request(`/api/v1/projects/${id}/findings/fix-all`, {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+}
+
+/** Pro-tier only (enforced server-side) — see backend/src/routes/projects.ts's "Approve & generate all" section. */
+export function generateAllPatches(
+  id: string,
+  options?: { providerId?: string; budgetTokens?: number }
+): Promise<BulkFixResult> {
+  return request(`/api/v1/projects/${id}/patches/generate-all`, {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+}
+
 // AI Mode — Diff Review & Apply (Phase 18). The second human-approval
 // gate: a generated diff must be reviewed and approved again — separately
 // from approving that generation should happen at all — before /apply
