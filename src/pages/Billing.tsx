@@ -59,6 +59,26 @@ export default function BillingPage() {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
+  // Bug fix: clicking "Upgrade to Pro" navigates the whole browser tab away
+  // to Dodo's hosted checkout via `window.location.href` — this component
+  // never unmounts cleanly for that, it just gets frozen mid-"Redirecting…"
+  // with checkoutBusy stuck true. If the user then hits the browser Back
+  // button before finishing checkout, the browser restores this exact page
+  // (often straight from bfcache, without re-running any mount effects) —
+  // so without this listener, "Redirecting to checkout…" stays stuck
+  // showing forever until a manual hard refresh. `pageshow` fires both on
+  // a bfcache restore (`event.persisted === true`) and on a normal
+  // (re)load, so resetting unconditionally here covers both — coming back
+  // to this page should never show a spinner for a checkout that isn't
+  // actually in flight anymore.
+  useEffect(() => {
+    function handlePageShow() {
+      setCheckoutBusy(false);
+    }
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   function load() {
     setLoading(true);
     setError(null);

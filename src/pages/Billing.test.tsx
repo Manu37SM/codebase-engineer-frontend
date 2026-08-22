@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BillingPage from "./Billing";
 import { AuthProvider } from "../context/AuthContext";
@@ -144,6 +144,36 @@ describe("BillingPage", () => {
     await waitFor(() => {
       expect(window.location.href).toBe("https://test.dodopayments.com/checkout/cks_abc123");
     });
+  });
+
+  it("clears a stuck \"Redirecting to checkout…\" state on pageshow (browser Back / bfcache restore after an incomplete checkout)", async () => {
+    mockedApi.getBillingStatus.mockResolvedValue({
+      configured: true,
+      tier: "free",
+      limit: 50,
+      used: 3,
+      subscription: { status: "active", currentPeriodEnd: null },
+    });
+    mockedApi.createBillingCheckout.mockResolvedValue({
+      sessionId: "cks_abc123",
+      checkoutUrl: "https://test.dodopayments.com/checkout/cks_abc123",
+    });
+    renderPage();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Upgrade to Pro" }));
+    await screen.findByText("Redirecting to checkout…");
+
+    // Simulate the browser restoring this exact page (Back button / bfcache)
+    // instead of the checkout actually completing.
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Redirecting to checkout…")).not.toBeInTheDocument();
+    });
+    expect(await screen.findByRole("button", { name: "Upgrade to Pro" })).not.toBeDisabled();
   });
 
   it("shows an error and re-enables the button when checkout creation fails", async () => {
