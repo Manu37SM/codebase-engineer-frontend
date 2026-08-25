@@ -82,7 +82,7 @@ describe("RepositoriesPage", () => {
     expect(await screen.findByText("No repositories registered yet.")).toBeInTheDocument();
   });
 
-  it("registers a new repository (via Zip URL, the default tab) and lists it", async () => {
+  it("registers a new repository (via Git URL, the default tab) and lists it", async () => {
     mockedApi.listProjects.mockResolvedValueOnce({ projects: [] }).mockResolvedValue({
       // Not "Once" — handleRegistered's auto-scan (on by default) refreshes
       // the project list an extra time after registering, so this needs to
@@ -99,10 +99,10 @@ describe("RepositoriesPage", () => {
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Name"), "my-app");
-    await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/archive.zip");
+    await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/archive.git");
     await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
-    expect(mockedApi.importProject).toHaveBeenCalledWith("my-app", "zip", "https://example.com/archive.zip");
+    expect(mockedApi.importProject).toHaveBeenCalledWith("my-app", "git", "https://github.com/user/archive.git");
     expect(await screen.findByText("my-app")).toBeInTheDocument();
     expect(screen.getByText("/data/my-app")).toBeInTheDocument();
   });
@@ -114,7 +114,7 @@ describe("RepositoriesPage", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
-    expect(await screen.findByText("Both a name and a zip URL are required.")).toBeInTheDocument();
+    expect(await screen.findByText("Both a name and a git URL are required.")).toBeInTheDocument();
     expect(mockedApi.importProject).not.toHaveBeenCalled();
   });
 

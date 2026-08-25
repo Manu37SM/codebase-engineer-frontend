@@ -28,6 +28,17 @@ const MODE_LABELS: Record<Mode, string> = {
   drive: "Google Drive",
 };
 
+// User request: hide the "Zip URL" tab from the tab bar rather than
+// removing the feature outright — the underlying mode, form fields, and
+// backend route are all still fully functional (a genuine direct-download
+// link, e.g. a GitHub release asset or S3 object, still works fine);
+// what's unreliable in practice is the *kind* of link people tend to paste
+// there (Google Drive/OneDrive share pages, see zipUrl.ts's own
+// doc comments), not the feature itself. Flipping this back to true
+// re-shows the tab with no other changes needed.
+const SHOW_ZIP_URL_TAB = false;
+const VISIBLE_MODES = (["zip", "git", "github", "drive"] as const).filter((m) => m !== "zip" || SHOW_ZIP_URL_TAB);
+
 const DISCLOSURE_AGREED_STORAGE_KEY = "codebase-engineer.registerDisclosureAgreed";
 
 function hasAgreedToDisclosure(): boolean {
@@ -70,7 +81,7 @@ function rememberDisclosureAgreed(): void {
  */
 export default function RegisterProjectForm({ onRegistered, className }: RegisterProjectFormProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<Mode>("zip");
+  const [mode, setMode] = useState<Mode>(SHOW_ZIP_URL_TAB ? "zip" : "git");
   const [name, setName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -235,7 +246,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       }
     >
       <div className="flex w-full gap-1 text-xs">
-        {(["zip", "git", "github", "drive"] as const).map((m) => (
+        {VISIBLE_MODES.map((m) => (
           <button
             key={m}
             type="button"

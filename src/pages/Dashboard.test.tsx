@@ -110,7 +110,7 @@ describe("DashboardPage", () => {
     mockedApi.listProjects.mockResolvedValue({ projects: [] });
     renderPage();
     expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Zip download URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Git URL")).toBeInTheDocument();
   });
 
   it("offers a one-click picker when repositories exist but none is selected", async () => {

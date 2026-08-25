@@ -68,15 +68,20 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
   });
 
-  it("defaults to Zip URL mode", async () => {
+  // User request: hide the "Zip URL" tab (unreliable in practice — see
+  // zipUrl.ts's own doc comments on Drive/OneDrive share links) without
+  // removing the underlying feature. Git URL is the next tab over, so it
+  // becomes the new default.
+  it("defaults to Git URL mode, now that Zip URL is hidden", async () => {
     renderForm();
-    expect(await screen.findByLabelText("Zip download URL")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Git URL")).toBeInTheDocument();
   });
 
-  it("does not offer a Local path tab (this deployment runs on a remote server)", async () => {
+  it("does not offer a Local path or Zip URL tab", async () => {
     renderForm();
-    await screen.findByLabelText("Zip download URL");
+    await screen.findByLabelText("Git URL");
     expect(screen.queryByRole("button", { name: "Local path" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zip URL" })).not.toBeInTheDocument();
   });
 
   it("switches to Git URL mode and imports via a git clone", async () => {
@@ -93,20 +98,6 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
     expect(mockedApi.importProject).toHaveBeenCalledWith("cloned-repo", "git", "https://github.com/user/repo.git");
     expect(onRegistered).toHaveBeenCalledWith("p1");
-  });
-
-  it("Zip URL mode (the default) imports via a zip download", async () => {
-    mockedApi.importProject.mockResolvedValue({ project: { id: "p2" } });
-    renderForm();
-
-    const user = userEvent.setup();
-    await screen.findByLabelText("Zip download URL");
-
-    await user.type(screen.getByLabelText("Name"), "zipped-repo");
-    await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/archive.zip");
-    await user.click(screen.getByRole("button", { name: "Register & continue" }));
-
-    expect(mockedApi.importProject).toHaveBeenCalledWith("zipped-repo", "zip", "https://example.com/archive.zip");
   });
 
   it("shows the import failure message rather than a generic one", async () => {
@@ -318,7 +309,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
       const user = userEvent.setup();
       await user.type(await screen.findByLabelText("Name"), "first-time-repo");
-      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo.git");
       await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
       expect(await screen.findByText("Before you register a repository")).toBeInTheDocument();
@@ -328,8 +319,8 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
       expect(mockedApi.importProject).toHaveBeenCalledWith(
         "first-time-repo",
-        "zip",
-        "https://example.com/repo.zip"
+        "git",
+        "https://github.com/user/repo.git"
       );
       expect(onRegistered).toHaveBeenCalledWith("p5");
     });
@@ -339,7 +330,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
       const user = userEvent.setup();
       await user.type(await screen.findByLabelText("Name"), "cancelled-repo");
-      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo.git");
       await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
       await screen.findByText("Before you register a repository");
@@ -357,13 +348,13 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
       const user = userEvent.setup();
       await user.type(await screen.findByLabelText("Name"), "repo-one");
-      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo-one.git");
       await user.click(screen.getByRole("button", { name: "Register & continue" }));
       await user.click(await screen.findByRole("button", { name: "Agree and continue" }));
       await screen.findByText("Register & continue"); // form re-rendered after reset()
 
       await user.type(screen.getByLabelText("Name"), "repo-two");
-      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo2.zip");
+      await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo-two.git");
       await user.click(screen.getByRole("button", { name: "Register & continue" }));
 
       expect(mockedApi.importProject).toHaveBeenCalledTimes(2);
@@ -371,7 +362,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
       expect(screen.queryByText("Before you register a repository")).not.toBeInTheDocument();
     });
 
-    it("gates the GitHub tab's Register & continue the same as Zip URL", async () => {
+    it("gates the GitHub tab's Register & continue the same as Git URL", async () => {
       mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: CONNECTED_USER });
       mockedApi.listGitHubRepos.mockResolvedValue({ repos: [{ id: 1, fullName: "octo/repo", private: false }] });
       mockedApi.importGitHubRepo.mockResolvedValue({ project: { id: "p7" } });

@@ -122,8 +122,8 @@ export default function BillingPage() {
       <section>
         <h2 className="text-sm font-semibold text-slate-900">Repositories</h2>
         <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Controls what happens right after registering a repository (Zip URL, Git URL, GitHub, or
-          Google Drive, from the Dashboard or the Repositories page).
+          Controls what happens right after registering a repository (Git URL, GitHub, or Google
+          Drive, from the Dashboard or the Repositories page).
         </p>
         <label className="mt-3 flex items-start gap-2 rounded border border-slate-200 bg-white p-3 text-sm">
           <input
