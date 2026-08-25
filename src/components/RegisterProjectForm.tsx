@@ -87,6 +87,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
   const [driveFilesLoading, setDriveFilesLoading] = useState(false);
   const [driveFilesError, setDriveFilesError] = useState<string | null>(null);
   const [driveFilesSlow, setDriveFilesSlow] = useState(false);
+  const [driveFilter, setDriveFilter] = useState("");
   const [selectedDriveFile, setSelectedDriveFile] = useState<string>("");
 
   const githubConnected = Boolean(user?.githubConnected);
@@ -220,7 +221,9 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
 
   const filteredRepos =
     repos?.filter((r) => r.fullName.toLowerCase().includes(repoFilter.trim().toLowerCase())) ?? [];
-  const zipFiles = driveFiles ?? [];
+  const zipFiles = (driveFiles ?? []).filter((f) =>
+    f.name.toLowerCase().includes(driveFilter.trim().toLowerCase())
+  );
 
   return (
     <>
@@ -349,6 +352,21 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
             <div className="w-full">
               <label
                 className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                htmlFor="register-project-drive-filter"
+              >
+                Filter files
+              </label>
+              <input
+                id="register-project-drive-filter"
+                className="mt-1 w-80 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                value={driveFilter}
+                onChange={(e) => setDriveFilter(e.target.value)}
+                placeholder="type to search…"
+              />
+            </div>
+            <div className="w-full">
+              <label
+                className="block text-xs font-medium text-slate-600 dark:text-slate-400"
                 htmlFor="register-project-drive-file"
               >
                 Zip file
@@ -367,7 +385,11 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
               ) : driveFilesError ? (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">{driveFilesError}</p>
               ) : zipFiles.length === 0 ? (
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No zip files found in your Drive.</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {(driveFiles ?? []).length === 0
+                    ? "No zip files found in your Drive."
+                    : "No zip files match your filter."}
+                </p>
               ) : (
                 <select
                   id="register-project-drive-file"

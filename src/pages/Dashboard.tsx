@@ -436,25 +436,46 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
+        <div className="min-w-0 max-w-full">
+          {projects.length > 1 ? (
+            // Per user request: rather than a small separate dropdown off
+            // to the side duplicating the project name, the whole
+            // name+path header block IS the switcher — a native <select>
+            // styled to look like the plain heading it replaces, so
+            // clicking anywhere on the project's own name opens the list
+            // of repositories to switch between.
+            <div className="relative inline-block max-w-full">
+              <select
+                aria-label="Switch repository"
+                value={selectedProject.id}
+                onChange={(e) => selectProject(e.target.value)}
+                className="w-full max-w-full cursor-pointer appearance-none truncate rounded bg-transparent py-0.5 pl-0 pr-6 text-lg font-semibold text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="pointer-events-none absolute right-1 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+          ) : (
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
+          )}
+          <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
         </div>
         <div className="flex items-center gap-2">
-          {projects.length > 1 && (
-            <select
-              aria-label="Switch repository"
-              value={selectedProject.id}
-              onChange={(e) => selectProject(e.target.value)}
-              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          )}
           <button
             onClick={handleScanNow}
             disabled={scanning}

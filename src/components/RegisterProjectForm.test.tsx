@@ -267,6 +267,29 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     expect(onRegistered).toHaveBeenCalledWith("p4");
   });
 
+  it("Google Drive mode: filters the zip file list as the user types, so picking one doesn't require scrolling through everything", async () => {
+    mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: DRIVE_CONNECTED_USER });
+    mockedApi.listDriveZipFiles.mockResolvedValue({
+      files: [
+        { id: "file-1", name: "my-app.zip", mimeType: "application/zip", modifiedTime: "now", size: "1024" },
+        { id: "file-2", name: "old-project.zip", mimeType: "application/zip", modifiedTime: "now", size: "2048" },
+      ],
+      truncated: false,
+    });
+    renderForm();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Google Drive" }));
+    const select = await screen.findByLabelText("Zip file");
+    expect(select.querySelectorAll("option")).toHaveLength(3); // placeholder + 2 files
+
+    await user.type(await screen.findByLabelText("Filter files"), "old");
+
+    expect(select.querySelectorAll("option")).toHaveLength(2); // placeholder + 1 matching file
+    expect(screen.getByRole("option", { name: "old-project.zip" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "my-app.zip" })).not.toBeInTheDocument();
+  });
+
   it("Google Drive mode: requires a zip file to be picked before submitting", async () => {
     mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: DRIVE_CONNECTED_USER });
     mockedApi.listDriveZipFiles.mockResolvedValue({ files: [], truncated: false });

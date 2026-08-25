@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import DashboardPage from "./Dashboard";
 import { ProjectProvider } from "../context/ProjectContext";
@@ -226,6 +227,41 @@ describe("DashboardPage", () => {
       expect(screen.getByText("10")).toBeInTheDocument(); // total files stat tile
       expect(screen.getByText("2")).toBeInTheDocument(); // test files stat tile
     });
+  });
+
+  // User request: instead of a small separate dropdown next to the
+  // project name, the project name/path header itself doubles as the
+  // repository switcher when more than one project is registered.
+  it("lets the user switch repositories by using the header itself as the dropdown, with no separate switcher control", async () => {
+    const PROJECT_2 = { id: "p2", name: "other-app", root_path: "/tmp/other-app", created_at: "now", apply_mode: "direct" };
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT, PROJECT_2] });
+    mockedApi.getProject.mockResolvedValue({
+      project: PROJECT,
+      latestSnapshot: {
+        id: "s1",
+        project_id: "p1",
+        languages: JSON.stringify([]),
+        frameworks: JSON.stringify([]),
+        build_system: JSON.stringify([]),
+        package_managers: JSON.stringify([]),
+        git_branch: "main",
+        working_tree_status: JSON.stringify({ modified: 0, staged: 0, untracked: 0, clean: true }),
+        indexed_at: "2026-08-18T00:00:00.000Z",
+      },
+    });
+    mockedApi.listFiles.mockResolvedValue({ files: [], total: 0 });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+
+    const switcher = await screen.findByRole("combobox", { name: "Switch repository" });
+    expect(switcher).toHaveValue("p1");
+    expect(within(switcher).getByRole("option", { name: "other-app" })).toBeInTheDocument();
+    // The old separate corner dropdown is gone — the header select is the only one.
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+
+    await userEvent.selectOptions(switcher, "p2");
+    await waitFor(() => expect(mockedApi.getProject).toHaveBeenLastCalledWith("p2"));
   });
 
   const SNAPSHOT = {
