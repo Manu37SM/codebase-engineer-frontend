@@ -162,8 +162,28 @@ export default function BillingPage() {
                   </span>
                 </div>
                 {user?.githubConnected ? (
-                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                    Connected
+                  <span className="flex items-center gap-2">
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      Connected
+                    </span>
+                    {/*
+                      Re-hitting the same OAuth start URL while already
+                      signed in is safe — the backend recognizes the
+                      already-linked identity and updates its stored
+                      token in place (see oauthGithub.ts's callback);
+                      it never creates a duplicate account or switches
+                      you to a different one. Exposed here so a stale/
+                      revoked token (e.g. a 401 from GitHub when
+                      browsing repos) can be fixed with one click,
+                      without a full sign-out/sign-in.
+                    */}
+                    <a
+                      href={getGitHubSignInUrl()}
+                      title="Re-authorize if repo browsing is failing (e.g. a 401 error) — this refreshes the stored token without switching accounts."
+                      className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Reconnect
+                    </a>
                   </span>
                 ) : (
                   <a
@@ -184,8 +204,18 @@ export default function BillingPage() {
                   </span>
                 </div>
                 {user?.driveConnected ? (
-                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                    Connected
+                  <span className="flex items-center gap-2">
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      Connected
+                    </span>
+                    {/* Same reasoning as GitHub's Reconnect link above — see oauthGoogle.ts's callback. */}
+                    <a
+                      href={getGoogleSignInUrl()}
+                      title="Re-authorize if Drive browsing is failing (e.g. a 403 error) — this refreshes the stored token without switching accounts."
+                      className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Reconnect
+                    </a>
                   </span>
                 ) : (
                   <a

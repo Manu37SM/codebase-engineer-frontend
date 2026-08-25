@@ -262,5 +262,27 @@ describe("BillingPage", () => {
       expect(screen.queryByRole("link", { name: "Connect GitHub" })).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Connect Google" })).toBeInTheDocument();
     });
+
+    it("offers a Reconnect link alongside \"Connected\" — re-authorizing a stale token (e.g. a 401/403 the user hit) shouldn't require a full sign-out", async () => {
+      mockedApi.getAuthProviders.mockResolvedValue({ google: true, github: true });
+      mockedApi.getCurrentUser.mockResolvedValue({
+        authRequired: true,
+        user: {
+          id: "u1",
+          email: "manish@example.com",
+          displayName: null,
+          createdAt: "now",
+          githubConnected: true,
+          driveConnected: true,
+        },
+      });
+      renderPage();
+
+      await screen.findByText("Connected accounts");
+      const reconnectLinks = screen.getAllByRole("link", { name: "Reconnect" });
+      expect(reconnectLinks).toHaveLength(2);
+      expect(reconnectLinks[0]).toHaveAttribute("href", "/api/v1/auth/github/start");
+      expect(reconnectLinks[1]).toHaveAttribute("href", "/api/v1/auth/google/start");
+    });
   });
 });
