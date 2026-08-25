@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import RegisterProjectForm from "./RegisterProjectForm";
 import { AuthProvider } from "../context/AuthContext";
@@ -178,6 +178,41 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
     expect(mockedApi.importGitHubRepo).toHaveBeenCalledWith("octocat/secret", undefined);
     expect(onRegistered).toHaveBeenCalledWith("p3");
+  });
+
+  it("GitHub mode: suggests re-authorizing via sign-out/sign-in if the repo list takes too long — user report of a stuck \"Loading your repositories…\" spinner", async () => {
+    mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: CONNECTED_USER });
+    // Simulates the real bug: a hung outbound request that never resolves
+    // (now also fixed server-side with a fetch timeout, but this is the
+    // client-side safety net for whatever residual delay remains).
+    mockedApi.listGitHubRepos.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <AuthProvider>
+        <RegisterProjectForm onRegistered={vi.fn()} />
+      </AuthProvider>
+    );
+
+    // Real timers for the initial async auth/user load, so RTL's own
+    // polling (which itself uses setTimeout) isn't fighting fake ones.
+    const githubButton = await screen.findByRole("button", { name: "GitHub" });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(githubButton);
+
+      expect(screen.getByText("Loading your repositories…")).toBeInTheDocument();
+      expect(screen.queryByText(/taking longer than usual/)).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+
+      expect(screen.getByText(/taking longer than usual/)).toBeInTheDocument();
+      expect(screen.getByText(/Continue with GitHub/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("GitHub mode: requires a repo to be picked before submitting", async () => {

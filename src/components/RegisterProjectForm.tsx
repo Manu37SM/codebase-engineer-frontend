@@ -79,36 +79,78 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
   const [repos, setRepos] = useState<GitHubRepoSummary[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
   const [reposError, setReposError] = useState<string | null>(null);
+  const [reposSlow, setReposSlow] = useState(false);
   const [repoFilter, setRepoFilter] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<string>("");
 
   const [driveFiles, setDriveFiles] = useState<DriveFileSummary[] | null>(null);
   const [driveFilesLoading, setDriveFilesLoading] = useState(false);
   const [driveFilesError, setDriveFilesError] = useState<string | null>(null);
+  const [driveFilesSlow, setDriveFilesSlow] = useState(false);
   const [selectedDriveFile, setSelectedDriveFile] = useState<string>("");
 
   const githubConnected = Boolean(user?.githubConnected);
   const driveConnected = Boolean(user?.driveConnected);
 
+  // SLOW_LOAD_MS: how long to wait before suggesting a reconnect. A stuck
+  // "Loading your repositories…" (reported by the user) most likely means
+  // the stored OAuth token is stale/revoked and the underlying GitHub/
+  // Google API call is hanging rather than failing outright with a clean
+  // error this UI would otherwise show. There's no "Disconnect" button in
+  // this app (see Billing.tsx's Connected accounts section) — the fix is
+  // a full sign-out/sign-in via the OAuth button on the login page, which
+  // re-runs the authorization and stores a fresh token.
+  const SLOW_LOAD_MS = 10_000;
+
   useEffect(() => {
+    // Bug (caught by the new slow-load test, not just inferred): this
+    // effect used to also list `reposLoading` as a dependency. Calling
+    // setReposLoading(true) below changes that same dependency, which
+    // makes React re-run this effect on the very next commit — and
+    // *before* the new invocation runs, it fires this effect's own
+    // cleanup (`clearTimeout(slowTimer)`), clearing the timer the
+    // previous run had just started. Net effect: the "taking longer than
+    // usual" warning could never actually fire, because its timer was
+    // cancelled within the same tick it was created. `repos !== null`
+    // already covers "don't re-fetch once loaded"; `reposLoading` in the
+    // dependency array was never needed for that and only existed as
+    // leftover self-reference — removed rather than worked around.
     if (mode !== "github" || !githubConnected || repos !== null || reposLoading) return;
     setReposLoading(true);
     setReposError(null);
+    setReposSlow(false);
+    const slowTimer = setTimeout(() => setReposSlow(true), SLOW_LOAD_MS);
     listGitHubRepos()
       .then((result) => setRepos(result.repos))
       .catch((err) => setReposError(err instanceof ApiError ? err.message : "Failed to load GitHub repositories."))
-      .finally(() => setReposLoading(false));
-  }, [mode, githubConnected, repos, reposLoading]);
+      .finally(() => {
+        setReposLoading(false);
+        clearTimeout(slowTimer);
+      });
+    return () => clearTimeout(slowTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reposLoading deliberately excluded, see comment above
+  }, [mode, githubConnected, repos]);
 
   useEffect(() => {
+    // Same fix as the GitHub effect above — driveFilesLoading deliberately
+    // excluded from the dependency array so its own setDriveFilesLoading(true)
+    // call doesn't self-trigger a re-run whose cleanup clears the timer
+    // before it can ever fire.
     if (mode !== "drive" || !driveConnected || driveFiles !== null || driveFilesLoading) return;
     setDriveFilesLoading(true);
     setDriveFilesError(null);
+    setDriveFilesSlow(false);
+    const slowTimer = setTimeout(() => setDriveFilesSlow(true), SLOW_LOAD_MS);
     listDriveZipFiles()
       .then((result) => setDriveFiles(result.files))
       .catch((err) => setDriveFilesError(err instanceof ApiError ? err.message : "Failed to load Google Drive files."))
-      .finally(() => setDriveFilesLoading(false));
-  }, [mode, driveConnected, driveFiles, driveFilesLoading]);
+      .finally(() => {
+        setDriveFilesLoading(false);
+        clearTimeout(slowTimer);
+      });
+    return () => clearTimeout(slowTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- driveFilesLoading deliberately excluded, see comment above
+  }, [mode, driveConnected, driveFiles]);
 
   // Task: a one-time disclosure ("nothing stays on your machine, AI
   // patches are download-only, etc.") shown right after "Register &
@@ -245,7 +287,16 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
                 Repository
               </label>
               {reposLoading ? (
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading your repositories…</p>
+                <div>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading your repositories…</p>
+                  {reposSlow && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      This is taking longer than usual — if it doesn't finish shortly, your GitHub
+                      connection may be stale. Try signing out and signing back in with the
+                      "Continue with GitHub" button on the login page to re-authorize it.
+                    </p>
+                  )}
+                </div>
               ) : reposError ? (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">{reposError}</p>
               ) : (
@@ -303,7 +354,16 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
                 Zip file
               </label>
               {driveFilesLoading ? (
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading your Drive files…</p>
+                <div>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading your Drive files…</p>
+                  {driveFilesSlow && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      This is taking longer than usual — if it doesn't finish shortly, your Google
+                      connection may be stale. Try signing out and signing back in with the
+                      "Continue with Google" button on the login page to re-authorize it.
+                    </p>
+                  )}
+                </div>
               ) : driveFilesError ? (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">{driveFilesError}</p>
               ) : zipFiles.length === 0 ? (
