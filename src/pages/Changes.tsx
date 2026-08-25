@@ -14,12 +14,14 @@ import {
   listChanges,
   rejectGeneratedTest,
   rejectGeneratedTestWrite,
+  rejectAllPatches,
   rejectPatch,
   rejectPatchApply,
   writeAndRunGeneratedTest,
 } from "../lib/api";
 import type { GeneratedTestWithFindingContext, PatchWithFindingContext } from "../lib/types";
 import BulkAiFixButton from "../components/BulkAiFixButton";
+import BulkRejectButton from "../components/BulkRejectButton";
 
 /**
  * The Changes page — a real unified review queue, replacing the old
@@ -133,6 +135,21 @@ export default function ChangesPage() {
               onDone={load}
             />
           )}
+          {tier === "pro" &&
+            selectedProject &&
+            patches.some((p) => p.status === "proposed" || p.status === "approved_for_apply") && (
+              <BulkRejectButton
+                itemDescription={`${
+                  patches.filter((p) => p.status === "proposed" || p.status === "approved_for_apply").length
+                } patch${
+                  patches.filter((p) => p.status === "proposed" || p.status === "approved_for_apply").length === 1
+                    ? ""
+                    : "es"
+                }`}
+                onRun={() => rejectAllPatches(selectedProject.id)}
+                onDone={load}
+              />
+            )}
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as "all" | "pending")}
@@ -228,13 +245,31 @@ export default function ChangesPage() {
                   />
                 )}
                 {(patch.status === "approved_for_apply" || patch.status === "failed") && (
-                  <button
-                    onClick={() => withBusy(patch.id, () => applyPatch(selectedProject.id, patch.id))}
-                    disabled={busy !== null}
-                    className="mt-2 rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
-                  >
-                    {patch.status === "failed" ? "Retry apply" : "Apply patch"}
-                  </button>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => withBusy(patch.id, () => applyPatch(selectedProject.id, patch.id))}
+                      disabled={busy !== null}
+                      className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
+                    >
+                      {patch.status === "failed" ? "Retry apply" : "Apply patch"}
+                    </button>
+                    {/* Bug fix: previously there was no way to back out once a diff
+                        passed the second approval gate — only Apply was offered,
+                        even for someone who changed their mind before actually
+                        writing to disk. Reject is available here too now. Only
+                        for "approved_for_apply" — a "failed" apply already tried
+                        and failed to write anything, so the backend's reject-apply
+                        route (correctly) doesn't accept that status. */}
+                    {patch.status === "approved_for_apply" && (
+                      <button
+                        onClick={() => withBusy(patch.id, () => rejectPatchApply(selectedProject.id, patch.id))}
+                        disabled={busy !== null}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Reject
+                      </button>
+                    )}
+                  </div>
                 )}
                 {patch.status === "applied" && (
                   <p className="mt-2 font-medium text-emerald-700 dark:text-emerald-400">Applied to disk.</p>

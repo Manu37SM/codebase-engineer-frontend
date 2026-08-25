@@ -28,6 +28,24 @@ const MODE_LABELS: Record<Mode, string> = {
   drive: "Google Drive",
 };
 
+const DISCLOSURE_AGREED_STORAGE_KEY = "codebase-engineer.registerDisclosureAgreed";
+
+function hasAgreedToDisclosure(): boolean {
+  try {
+    return window.localStorage.getItem(DISCLOSURE_AGREED_STORAGE_KEY) === "1";
+  } catch {
+    return false; // localStorage unavailable — fall back to asking every time
+  }
+}
+
+function rememberDisclosureAgreed(): void {
+  try {
+    window.localStorage.setItem(DISCLOSURE_AGREED_STORAGE_KEY, "1");
+  } catch {
+    // ignore storage failures — the dialog just reappears next time
+  }
+}
+
 /**
  * The "register a repository" form, extracted out of Repositories.tsx
  * (Task #93) so the Dashboard's empty state can offer the same
@@ -92,6 +110,15 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       .finally(() => setDriveFilesLoading(false));
   }, [mode, driveConnected, driveFiles, driveFilesLoading]);
 
+  // Task: a one-time disclosure ("nothing stays on your machine, AI
+  // patches are download-only, etc.") shown right after "Register &
+  // continue" is clicked, the first time only — an Agree/Cancel dialog
+  // gates the actual import, then never appears again on this browser.
+  // handleSubmit does the same field validation regardless of which tab
+  // is active (Zip URL, Git URL, GitHub, Google Drive all funnel through
+  // here), so gating it here covers all four import sources at once.
+  const [showDisclosure, setShowDisclosure] = useState(false);
+
   function reset() {
     setName("");
     setSourceUrl("");
@@ -99,7 +126,25 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
     setSelectedDriveFile("");
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function doImport() {
+    setSubmitting(true);
+    try {
+      const { project } =
+        mode === "github"
+          ? await importGitHubRepo(selectedRepo, name.trim() || undefined)
+          : mode === "drive"
+            ? await importDriveZipFile(selectedDriveFile, name.trim() || undefined)
+            : await importProject(name.trim(), mode, sourceUrl.trim());
+      reset();
+      await onRegistered(project.id);
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Failed to register repository.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
 
@@ -118,21 +163,17 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const { project } =
-        mode === "github"
-          ? await importGitHubRepo(selectedRepo, name.trim() || undefined)
-          : mode === "drive"
-            ? await importDriveZipFile(selectedDriveFile, name.trim() || undefined)
-            : await importProject(name.trim(), mode, sourceUrl.trim());
-      reset();
-      await onRegistered(project.id);
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to register repository.");
-    } finally {
-      setSubmitting(false);
+    if (hasAgreedToDisclosure()) {
+      void doImport();
+    } else {
+      setShowDisclosure(true);
     }
+  }
+
+  function handleAgreeAndContinue() {
+    rememberDisclosureAgreed();
+    setShowDisclosure(false);
+    void doImport();
   }
 
   const filteredRepos =
@@ -140,6 +181,7 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
   const zipFiles = driveFiles ?? [];
 
   return (
+    <>
     <form
       onSubmit={handleSubmit}
       className={
@@ -356,5 +398,52 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
         </p>
       )}
     </form>
+
+    {showDisclosure && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="register-disclosure-heading"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      >
+        <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <h2 id="register-disclosure-heading" className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Before you register a repository
+          </h2>
+          <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <li>
+              • Your code isn't uploaded to any third party — it's downloaded or cloned straight into
+              this server's own storage, the same one this app runs on.
+            </li>
+            <li>
+              • AI-generated patches are never written to disk automatically. They can only be reviewed
+              and downloaded as a zip, which you apply on your own machine yourself.
+            </li>
+            <li>• "Remove" only deletes this app's own records for a repository — never the files themselves.</li>
+            <li>• You can register, scan, and remove as many repositories as you like.</li>
+          </ul>
+          <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+            This is shown once — you won't see it again on this browser.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDisclosure(false)}
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleAgreeAndContinue}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
+            >
+              Agree and continue
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

@@ -70,6 +70,11 @@ describe("RepositoriesPage", () => {
     mockedApi.detectSubProjects.mockReset();
     mockedApi.registerSubProject.mockReset();
     window.localStorage.clear();
+    // Pre-agree to RegisterProjectForm's one-time disclosure dialog (must
+    // come after the clear() above) — its own gating behavior is covered
+    // by RegisterProjectForm.test.tsx; these tests are about the
+    // Repositories page around it.
+    window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
   });
 
   it("shows an empty state when there are no repositories", async () => {
@@ -231,7 +236,7 @@ describe("RepositoriesPage", () => {
     expect(mockedApi.detectSubProjects).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the AI apply mode as a static \"Download as zip\" label (no server-filesystem write on this deployment)", async () => {
+  it("no longer repeats the \"AI apply: Download as zip\" label on every row — it's a fixed, unchangeable fact now disclosed once in the registration dialog instead", async () => {
     mockedApi.listProjects.mockResolvedValue({
       projects: [{ id: "p1", name: "my-app", root_path: "/data/my-app", created_at: "now", apply_mode: "download" }],
     });
@@ -239,7 +244,7 @@ describe("RepositoriesPage", () => {
     renderPage();
     await screen.findByText("my-app");
 
-    expect(screen.getByText("Download as zip")).toBeInTheDocument();
-    expect(screen.queryByLabelText("AI apply:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Download as zip")).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI apply:/)).not.toBeInTheDocument();
   });
 });

@@ -61,6 +61,11 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     mockedApi.listDriveZipFiles.mockReset();
     mockedApi.importDriveZipFile.mockReset();
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
+    // Pre-agree to the one-time "Before you register a repository"
+    // disclosure so the existing import-behavior tests below don't have
+    // to click through it — that flow gets its own dedicated tests further
+    // down, with a real empty localStorage.
+    window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
   });
 
   it("defaults to Zip URL mode", async () => {
@@ -239,5 +244,92 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
     expect(await screen.findByText("Pick a zip file to import.")).toBeInTheDocument();
     expect(mockedApi.importDriveZipFile).not.toHaveBeenCalled();
+  });
+
+  describe("first-time disclosure dialog (\"Before you register a repository\") — user request: gate Register & continue once, on every tab", () => {
+    beforeEach(() => {
+      // Undo the outer beforeEach's pre-agreement for this block only, so
+      // these tests see the dialog exactly as a first-time user would.
+      window.localStorage.removeItem("codebase-engineer.registerDisclosureAgreed");
+    });
+
+    it("shows the disclosure instead of importing immediately, and does not import until Agree and continue is clicked", async () => {
+      mockedApi.importProject.mockResolvedValue({ project: { id: "p5" } });
+      const onRegistered = vi.fn();
+      renderForm(onRegistered);
+
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Name"), "first-time-repo");
+      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+      expect(await screen.findByText("Before you register a repository")).toBeInTheDocument();
+      expect(mockedApi.importProject).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Agree and continue" }));
+
+      expect(mockedApi.importProject).toHaveBeenCalledWith(
+        "first-time-repo",
+        "zip",
+        "https://example.com/repo.zip"
+      );
+      expect(onRegistered).toHaveBeenCalledWith("p5");
+    });
+
+    it("Cancel closes the dialog without importing, and does not persist agreement", async () => {
+      renderForm();
+
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Name"), "cancelled-repo");
+      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+      await screen.findByText("Before you register a repository");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByText("Before you register a repository")).not.toBeInTheDocument();
+      expect(mockedApi.importProject).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem("codebase-engineer.registerDisclosureAgreed")).not.toBe("1");
+    });
+
+    it("does not show the dialog again after it's been agreed to once", async () => {
+      mockedApi.importProject.mockResolvedValue({ project: { id: "p6" } });
+      const onRegistered = vi.fn();
+      renderForm(onRegistered);
+
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Name"), "repo-one");
+      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo.zip");
+      await user.click(screen.getByRole("button", { name: "Register & continue" }));
+      await user.click(await screen.findByRole("button", { name: "Agree and continue" }));
+      await screen.findByText("Register & continue"); // form re-rendered after reset()
+
+      await user.type(screen.getByLabelText("Name"), "repo-two");
+      await user.type(screen.getByLabelText("Zip download URL"), "https://example.com/repo2.zip");
+      await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+      expect(mockedApi.importProject).toHaveBeenCalledTimes(2);
+      expect(onRegistered).toHaveBeenCalledWith("p6");
+      expect(screen.queryByText("Before you register a repository")).not.toBeInTheDocument();
+    });
+
+    it("gates the GitHub tab's Register & continue the same as Zip URL", async () => {
+      mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: CONNECTED_USER });
+      mockedApi.listGitHubRepos.mockResolvedValue({ repos: [{ id: 1, fullName: "octo/repo", private: false }] });
+      mockedApi.importGitHubRepo.mockResolvedValue({ project: { id: "p7" } });
+      renderForm();
+
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "GitHub" }));
+      const select = await screen.findByLabelText("Repository");
+      await user.selectOptions(select, "octo/repo");
+      await user.click(screen.getByRole("button", { name: "Register & continue" }));
+
+      expect(await screen.findByText("Before you register a repository")).toBeInTheDocument();
+      expect(mockedApi.importGitHubRepo).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Agree and continue" }));
+      expect(mockedApi.importGitHubRepo).toHaveBeenCalledWith("octo/repo", undefined);
+    });
   });
 });

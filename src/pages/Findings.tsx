@@ -1077,6 +1077,22 @@ function PatchesView({
                       )}
                     </>
                   )}
+                  {/* Bug fix: previously there was no way to back out once a diff
+                      passed the second approval gate — only Apply/Download was
+                      offered, even for someone who changed their mind before
+                      actually writing to disk. Only for "approved_for_apply" — a
+                      "failed" apply already tried and failed to write anything,
+                      so the backend's reject-apply route doesn't accept that
+                      status. */}
+                  {patch.status === "approved_for_apply" && (
+                    <button
+                      onClick={() => onRejectApply(patch.id)}
+                      disabled={busy !== null}
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Reject
+                    </button>
+                  )}
                 </div>
               )}
 

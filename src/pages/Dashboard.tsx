@@ -10,6 +10,7 @@ import {
   getGitAnalysis,
   getProject,
   indexProject,
+  listChanges,
   listFiles,
   listFindings,
   runProjectAnalysis,
@@ -46,6 +47,13 @@ export default function DashboardPage() {
   const [scanVersion, setScanVersion] = useState(0);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [checkingRemoveId, setCheckingRemoveId] = useState<string | null>(null);
+  // Same warning as Repositories.tsx's — only shown when the project
+  // actually has AI-generated patches, since that's the only case with
+  // something extra worth calling out before removing it.
+  const [removeWarning, setRemoveWarning] = useState<{ projectId: string; projectName: string; patchCount: number } | null>(
+    null
+  );
   const [pickerActionMessage, setPickerActionMessage] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [fileTotals, setFileTotals] = useState<{ total: number; test: number } | null>(null);
@@ -214,6 +222,24 @@ export default function DashboardPage() {
     } finally {
       setRemovingId(null);
       setConfirmRemoveId(null);
+      setRemoveWarning(null);
+    }
+  }
+
+  // Same "check for patches first" gate as Repositories.tsx.
+  async function handleRemoveClick(projectId: string, projectName: string) {
+    setCheckingRemoveId(projectId);
+    try {
+      const { patches } = await listChanges(projectId);
+      if (patches.length > 0) {
+        setRemoveWarning({ projectId, projectName, patchCount: patches.length });
+      } else {
+        setConfirmRemoveId(projectId);
+      }
+    } catch {
+      setConfirmRemoveId(projectId);
+    } finally {
+      setCheckingRemoveId(null);
     }
   }
 
@@ -304,10 +330,11 @@ export default function DashboardPage() {
                   </span>
                 ) : (
                   <button
-                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-slate-600 dark:hover:bg-red-950"
-                    onClick={() => setConfirmRemoveId(project.id)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-red-950"
+                    disabled={checkingRemoveId === project.id}
+                    onClick={() => handleRemoveClick(project.id, project.name)}
                   >
-                    Remove
+                    {checkingRemoveId === project.id ? "Checking…" : "Remove"}
                   </button>
                 )}
               </div>
@@ -315,6 +342,47 @@ export default function DashboardPage() {
           ))}
         </ul>
         {pickerActionMessage && <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{pickerActionMessage}</p>}
+
+        {removeWarning && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-remove-warning-heading"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+          >
+            <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+              <h2 id="dashboard-remove-warning-heading" className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Remove "{removeWarning.projectName}"?
+              </h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                This project has {removeWarning.patchCount} AI-generated patch{removeWarning.patchCount === 1 ? "" : "es"}.
+                Removing it deletes Codebase Engineer's record of {removeWarning.patchCount === 1 ? "it" : "them"} too —
+                your actual files on disk are never touched.
+              </p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                If you're on the free tier, any AI usage already spent generating{" "}
+                {removeWarning.patchCount === 1 ? "it" : "them"} won't be refunded to your monthly limit.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRemoveWarning(null)}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={removingId === removeWarning.projectId}
+                  onClick={() => handleRemoveProject(removeWarning.projectId)}
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {removingId === removeWarning.projectId ? "Removing…" : "Remove anyway"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -373,6 +441,20 @@ export default function DashboardPage() {
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
         </div>
         <div className="flex items-center gap-2">
+          {projects.length > 1 && (
+            <select
+              aria-label="Switch repository"
+              value={selectedProject.id}
+              onChange={(e) => selectProject(e.target.value)}
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleScanNow}
             disabled={scanning}

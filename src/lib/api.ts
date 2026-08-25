@@ -389,6 +389,23 @@ export function rejectPatchApply(id: string, patchId: string, reviewerNote?: str
   });
 }
 
+/** Result shape for "Reject all" — same as BulkFixResult but no `usage`, since this never calls an AI provider (pure DB state change). */
+export interface BulkRejectResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  results: Array<{ patchId: string; error: string | null }>;
+}
+
+/** Pro-tier only (enforced server-side) — rejects every patch still awaiting a decision past the diff-review gate ('proposed' or 'approved_for_apply'). */
+export function rejectAllPatches(id: string, reviewerNote?: string): Promise<BulkRejectResult> {
+  return request(`/api/v1/projects/${id}/patches/reject-all`, {
+    method: "POST",
+    body: JSON.stringify(reviewerNote ? { reviewerNote } : {}),
+  });
+}
+
 export function applyPatch(id: string, patchId: string): Promise<{ patch: PatchRecord }> {
   return request(`/api/v1/projects/${id}/patches/${patchId}/apply`, { method: "POST" });
 }
@@ -523,6 +540,16 @@ export function listTestRuns(id: string, limit?: number): Promise<{ runs: TestRu
 
 export function getTestRun(id: string, runId: string): Promise<{ run: TestRunRecord }> {
   return request(`/api/v1/projects/${id}/tests/${runId}`);
+}
+
+/** Deletes one entry from the run history. Only the recorded run is removed — never re-runs anything, never touches the real test suite on disk. */
+export function deleteTestRun(id: string, runId: string): Promise<{ deleted: boolean }> {
+  return request(`/api/v1/projects/${id}/tests/${runId}`, { method: "DELETE" });
+}
+
+/** Pro-tier only (enforced server-side) — clears the entire run history for a project in one call. */
+export function deleteAllTestRuns(id: string): Promise<{ deleted: number }> {
+  return request(`/api/v1/projects/${id}/tests`, { method: "DELETE" });
 }
 
 /**

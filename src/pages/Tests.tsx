@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import ActivityIndicator from "../components/ActivityIndicator";
 import {
+  deleteAllTestRuns,
+  deleteTestRun,
   diagnoseTestFailure,
+  getBillingStatus,
   getTestFailureDiagnosis,
   getTestRun,
   listAiProviders,
@@ -33,11 +36,21 @@ export default function TestsPage() {
   const [diagnoses, setDiagnoses] = useState<Record<string, FailureDiagnosisData>>({});
   const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+  // Per-user request: delete a single run from the history, and a Pro-only
+  // "Delete all" for the whole history at once.
+  const [confirmDeleteRunId, setConfirmDeleteRunId] = useState<string | null>(null);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [tier, setTier] = useState<"free" | "pro" | null>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     listAiProviders()
       .then((res) => setHasEnabledProvider(res.providers.some((p) => p.enabled)))
       .catch(() => setHasEnabledProvider(false));
+    getBillingStatus()
+      .then((res) => setTier(res.tier))
+      .catch(() => setTier(null));
   }, []);
 
   function loadHistory() {
@@ -90,6 +103,36 @@ export default function TestsPage() {
       setSelectedRun(full.run);
     } catch {
       setSelectedRun(run);
+    }
+  }
+
+  async function handleDeleteRun(runId: string) {
+    if (!selectedProject) return;
+    setDeletingRunId(runId);
+    setError(null);
+    try {
+      await deleteTestRun(selectedProject.id, runId);
+      loadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete run.");
+    } finally {
+      setDeletingRunId(null);
+      setConfirmDeleteRunId(null);
+    }
+  }
+
+  async function handleDeleteAllRuns() {
+    if (!selectedProject) return;
+    setDeletingAll(true);
+    setError(null);
+    try {
+      await deleteAllTestRuns(selectedProject.id);
+      loadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete run history.");
+    } finally {
+      setDeletingAll(false);
+      setShowDeleteAllConfirm(false);
     }
   }
 
@@ -150,6 +193,14 @@ export default function TestsPage() {
         <h1 className="text-lg font-semibold text-slate-900">Tests</h1>
         <div className="flex items-center gap-3">
           {running && <ActivityIndicator label="Running the project's real test command" />}
+          {tier === "pro" && runs.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllConfirm(true)}
+              className="rounded border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              Delete all
+            </button>
+          )}
           <button
             onClick={handleRunTests}
             disabled={running}
@@ -159,6 +210,43 @@ export default function TestsPage() {
           </button>
         </div>
       </div>
+
+      {showDeleteAllConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-all-tests-heading"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+            <h2 id="delete-all-tests-heading" className="text-base font-semibold text-slate-900">
+              Delete all run history?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This deletes all {runs.length} recorded test run{runs.length === 1 ? "" : "s"} for this
+              repository. It only clears this app's own history — it never re-runs or touches your real
+              test suite. This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAllConfirm(false)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingAll}
+                onClick={handleDeleteAllRuns}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {deletingAll ? "Deleting…" : "Delete all"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
@@ -273,15 +361,15 @@ export default function TestsPage() {
         </div>
       )}
 
-      {!loading && !error && runs.length > 1 && (
+      {!loading && !error && runs.length > 0 && (
         <div className="mt-6">
           <h2 className="text-xs font-medium text-slate-500">Run history</h2>
           <ul className="mt-2 space-y-1">
             {runs.map((run) => (
-              <li key={run.id}>
+              <li key={run.id} className="flex items-center gap-1">
                 <button
                   onClick={() => handleSelectRun(run)}
-                  className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 ${
+                  className={`flex flex-1 items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 ${
                     selectedRun?.id === run.id ? "bg-slate-100" : ""
                   }`}
                 >
@@ -301,6 +389,33 @@ export default function TestsPage() {
                     {new Date(run.started_at).toLocaleString()}
                   </span>
                 </button>
+                {confirmDeleteRunId === run.id ? (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      disabled={deletingRunId === run.id}
+                      onClick={() => handleDeleteRun(run.id)}
+                      className="rounded border border-red-300 px-1.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deletingRunId === run.id ? "…" : "Confirm"}
+                    </button>
+                    <button
+                      disabled={deletingRunId === run.id}
+                      onClick={() => setConfirmDeleteRunId(null)}
+                      className="rounded border border-slate-300 px-1.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteRunId(run.id)}
+                    title="Delete this run from the history"
+                    aria-label={`Delete run from ${new Date(run.started_at).toLocaleString()}`}
+                    className="shrink-0 rounded px-1.5 py-1 text-xs font-medium text-slate-400 hover:bg-red-50 hover:text-red-700"
+                  >
+                    ✕
+                  </button>
+                )}
               </li>
             ))}
           </ul>

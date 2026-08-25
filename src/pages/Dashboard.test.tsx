@@ -94,6 +94,9 @@ describe("DashboardPage", () => {
     mockedApi.importProject.mockReset();
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
+    // Pre-agree to RegisterProjectForm's one-time disclosure dialog — its
+    // own gating behavior is covered by RegisterProjectForm.test.tsx.
+    window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
     mockedApi.runProjectAnalysis.mockReset().mockResolvedValue({
       run: { id: "r0", project_id: "p0", started_at: "now", finished_at: "now", status: "completed", findings_count: 0, critical_count: 0, high_count: 0, medium_count: 0, low_count: 0 },
       findingsCount: 0,

@@ -17,6 +17,9 @@ vi.mock("../lib/api", async () => {
     listAiProviders: vi.fn(),
     diagnoseTestFailure: vi.fn(),
     getTestFailureDiagnosis: vi.fn(),
+    deleteTestRun: vi.fn(),
+    deleteAllTestRuns: vi.fn(),
+    getBillingStatus: vi.fn(),
   };
 });
 
@@ -28,6 +31,9 @@ const mockedApi = api as unknown as {
   listAiProviders: ReturnType<typeof vi.fn>;
   diagnoseTestFailure: ReturnType<typeof vi.fn>;
   getTestFailureDiagnosis: ReturnType<typeof vi.fn>;
+  deleteTestRun: ReturnType<typeof vi.fn>;
+  deleteAllTestRuns: ReturnType<typeof vi.fn>;
+  getBillingStatus: ReturnType<typeof vi.fn>;
 };
 
 const PROJECT = { id: "p1", name: "my-app", root_path: "/tmp/my-app", created_at: "now" };
@@ -81,6 +87,15 @@ describe("TestsPage", () => {
     mockedApi.diagnoseTestFailure.mockReset();
     mockedApi.getTestFailureDiagnosis.mockReset();
     mockedApi.getTestFailureDiagnosis.mockResolvedValue({ diagnosis: null });
+    mockedApi.deleteTestRun.mockReset();
+    mockedApi.deleteAllTestRuns.mockReset();
+    mockedApi.getBillingStatus.mockReset().mockResolvedValue({
+      configured: true,
+      tier: "free",
+      limit: 50,
+      used: 0,
+      subscription: null,
+    });
     window.localStorage.clear();
   });
 
@@ -294,5 +309,93 @@ describe("TestsPage", () => {
       expect(screen.getByText("Stored cause.")).toBeInTheDocument();
     });
     expect(mockedApi.diagnoseTestFailure).not.toHaveBeenCalled();
+  });
+
+  describe("deleting run history — user request: delete one run, and Pro-only delete all", () => {
+    it("deletes a single run from the history after a confirm click, and reloads", async () => {
+      mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+      mockedApi.listTestRuns
+        .mockResolvedValueOnce({ runs: [PASSED_RUN, FAILED_RUN] })
+        .mockResolvedValue({ runs: [FAILED_RUN] });
+      mockedApi.getTestRun.mockResolvedValue({ run: PASSED_RUN });
+      mockedApi.deleteTestRun.mockResolvedValue({ deleted: true });
+      window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+      renderPage();
+      await screen.findByText("Run history");
+
+      const user = userEvent.setup();
+      // PASSED_RUN and FAILED_RUN share the same fixture started_at, so
+      // both rows render an identical aria-label — target the first (the
+      // list is in listTestRuns' returned order, PASSED_RUN first).
+      await user.click(screen.getAllByRole("button", { name: /Delete run from/ })[0]);
+      await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+      expect(mockedApi.deleteTestRun).toHaveBeenCalledWith("p1", "run1");
+      await waitFor(() => {
+        expect(mockedApi.listTestRuns).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("Cancel on a single-run delete leaves the run untouched", async () => {
+      mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+      mockedApi.listTestRuns.mockResolvedValue({ runs: [PASSED_RUN] });
+      mockedApi.getTestRun.mockResolvedValue({ run: PASSED_RUN });
+      window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+      renderPage();
+      await screen.findByText("Run history");
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: /Delete run from/ }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(mockedApi.deleteTestRun).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
+    });
+
+    it("does not show \"Delete all\" on the free tier", async () => {
+      mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+      mockedApi.listTestRuns.mockResolvedValue({ runs: [PASSED_RUN] });
+      mockedApi.getTestRun.mockResolvedValue({ run: PASSED_RUN });
+      window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+      renderPage();
+      await screen.findByText("Run history");
+
+      expect(screen.queryByRole("button", { name: "Delete all" })).not.toBeInTheDocument();
+    });
+
+    it("Pro tier: \"Delete all\" confirms, deletes, and reloads an empty history", async () => {
+      mockedApi.getBillingStatus.mockResolvedValue({
+        configured: true,
+        tier: "pro",
+        limit: null,
+        used: 5,
+        subscription: { status: "active", currentPeriodEnd: null },
+      });
+      mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+      mockedApi.listTestRuns
+        .mockResolvedValueOnce({ runs: [PASSED_RUN, FAILED_RUN] })
+        .mockResolvedValue({ runs: [] });
+      mockedApi.getTestRun.mockResolvedValue({ run: PASSED_RUN });
+      mockedApi.deleteAllTestRuns.mockResolvedValue({ deleted: 2 });
+      window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+      renderPage();
+      const deleteAllButton = await screen.findByRole("button", { name: "Delete all" });
+
+      const user = userEvent.setup();
+      await user.click(deleteAllButton);
+      await screen.findByText("Delete all run history?");
+      // Two "Delete all" buttons now exist (header + dialog) — the dialog's is the last one.
+      const dialogButtons = screen.getAllByRole("button", { name: "Delete all" });
+      await user.click(dialogButtons[dialogButtons.length - 1]);
+
+      expect(mockedApi.deleteAllTestRuns).toHaveBeenCalledWith("p1");
+      await waitFor(() => {
+        expect(screen.getByText(/No tests have been run yet/)).toBeInTheDocument();
+      });
+    });
   });
 });

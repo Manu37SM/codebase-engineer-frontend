@@ -7,6 +7,7 @@ import {
   runProjectAnalysis,
   detectSubProjects,
   registerSubProject,
+  listChanges,
   type MultiProjectDetectionResult,
 } from "../lib/api";
 import { ApiError } from "../lib/api";
@@ -21,6 +22,15 @@ export default function RepositoriesPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [checkingRemoveId, setCheckingRemoveId] = useState<string | null>(null);
+  // Shown instead of the plain inline confirm when the project actually
+  // has AI-generated patches on it — removing a project deletes those
+  // records too (cascade), and per the user's explicit request this is
+  // called out up front, along with the fact that any free-tier AI usage
+  // already spent generating them isn't refunded.
+  const [removeWarning, setRemoveWarning] = useState<{ projectId: string; projectName: string; patchCount: number } | null>(
+    null
+  );
   const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
   const [detectingId, setDetectingId] = useState<string | null>(null);
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
@@ -114,6 +124,29 @@ export default function RepositoriesPage() {
     } finally {
       setRemovingId(null);
       setConfirmRemoveId(null);
+      setRemoveWarning(null);
+    }
+  }
+
+  // Clicking "Remove" checks for AI-generated patches first, so the
+  // stronger warning dialog only appears when there's actually something
+  // to lose — a project with nothing generated yet keeps the plain
+  // one-line inline confirm it always had.
+  async function handleRemoveClick(projectId: string, projectName: string) {
+    setCheckingRemoveId(projectId);
+    try {
+      const { patches } = await listChanges(projectId);
+      if (patches.length > 0) {
+        setRemoveWarning({ projectId, projectName, patchCount: patches.length });
+      } else {
+        setConfirmRemoveId(projectId);
+      }
+    } catch {
+      // Fail open — don't block removal just because the patch check
+      // itself failed; fall back to the plain confirm.
+      setConfirmRemoveId(projectId);
+    } finally {
+      setCheckingRemoveId(null);
     }
   }
 
@@ -156,20 +189,25 @@ export default function RepositoriesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {/*
-                      "Direct to disk" used to be a selectable option here,
-                      but this instance runs on a remote server — writing
-                      an approved AI-Mode patch "directly to disk" would
-                      write it into the *server's* filesystem, not the
-                      user's own machine, which isn't useful and was
+                      The per-row "AI apply: Download as zip" label used to
+                      live here, but every project runs in this mode (see
+                      the removed comment's reasoning below) — repeating a
+                      static, unchangeable fact on every single row was
+                      just clutter. The same fact is now disclosed once, up
+                      front, in the "Agree and continue" dialog shown the
+                      first time someone registers a repository (see
+                      RegisterProjectForm.tsx), where it actually informs a
+                      decision instead of decorating a list.
+
+                      ("Direct to disk" used to be a selectable option
+                      here, but this instance runs on a remote server —
+                      writing an approved AI-Mode patch "directly to disk"
+                      would write it into the *server's* filesystem, not
+                      the user's own machine, which isn't useful and was
                       confusing. Every project now runs in "download as
-                      zip" mode (createProject defaults new projects to it,
-                      migration 017 flipped existing ones), so this is a
-                      static label rather than a dropdown with only one
-                      real choice.
+                      zip" mode — createProject defaults new projects to
+                      it, migration 017 flipped existing ones.)
                     */}
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      AI apply: <span className="font-medium text-slate-700">Download as zip</span>
-                    </span>
                     {busyProjectId === project.id && (
                       <ActivityIndicator label="Discovering & indexing files" />
                     )}
@@ -223,10 +261,11 @@ export default function RepositoriesPage() {
                       </span>
                     ) : (
                       <button
-                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                        onClick={() => setConfirmRemoveId(project.id)}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        disabled={checkingRemoveId === project.id}
+                        onClick={() => handleRemoveClick(project.id, project.name)}
                       >
-                        Remove
+                        {checkingRemoveId === project.id ? "Checking…" : "Remove"}
                       </button>
                     )}
                   </div>
@@ -271,6 +310,47 @@ export default function RepositoriesPage() {
           })}
         </ul>
       </div>
+
+      {removeWarning && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="remove-warning-heading"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 id="remove-warning-heading" className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Remove "{removeWarning.projectName}"?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              This project has {removeWarning.patchCount} AI-generated patch{removeWarning.patchCount === 1 ? "" : "es"}.
+              Removing it deletes Codebase Engineer's record of {removeWarning.patchCount === 1 ? "it" : "them"} too —
+              your actual files on disk are never touched.
+            </p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              If you're on the free tier, any AI usage already spent generating {removeWarning.patchCount === 1 ? "it" : "them"}{" "}
+              won't be refunded to your monthly limit.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveWarning(null)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={removingId === removeWarning.projectId}
+                onClick={() => handleRemove(removeWarning.projectId)}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {removingId === removeWarning.projectId ? "Removing…" : "Remove anyway"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

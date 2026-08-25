@@ -54,7 +54,7 @@ export default function NavShell() {
     <div className="flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <nav
         aria-label="Primary"
-        className={`flex shrink-0 flex-col border-r border-slate-200 bg-white py-4 transition-[width] duration-150 dark:border-slate-800 dark:bg-slate-900 ${
+        className={`sticky top-0 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white py-4 transition-[width] duration-150 dark:border-slate-800 dark:bg-slate-900 ${
           collapsed ? "w-14 px-2" : "w-56 px-3"
         }`}
       >
@@ -68,9 +68,9 @@ export default function NavShell() {
             onClick={toggleCollapsed}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
           >
-            <span aria-hidden="true" className="text-xs">
+            <span aria-hidden="true" className="text-sm leading-none">
               {collapsed ? "»" : "«"}
             </span>
           </button>
