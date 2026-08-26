@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import CommandPalette, { OPEN_EVENT } from "./CommandPalette";
+import KeyboardShortcutsModal, { OPEN_SHORTCUTS_EVENT } from "./KeyboardShortcutsModal";
 
 const NAV_SECTIONS = [
   { to: "/", label: "Dashboard", icon: "⌂" },
@@ -21,16 +22,14 @@ function readPersistedCollapsed(): boolean {
   try {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1";
   } catch {
-    return false; // localStorage unavailable (e.g. some test environments)
+    return false; 
   }
 }
 
 export default function NavShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  // Task #88: icon-only collapsible sidebar, persisted across reloads —
-  // same "same behavior as devtoolbox" request as the earlier dark-mode
-  // and command-palette additions.
+
   const [collapsed, setCollapsed] = useState(readPersistedCollapsed);
 
   function toggleCollapsed() {
@@ -39,7 +38,7 @@ export default function NavShell() {
       try {
         window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
       } catch {
-        // ignore storage failures — collapse state still works for this session
+
       }
       return next;
     });
@@ -95,6 +94,26 @@ export default function NavShell() {
           )}
         </button>
 
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SHORTCUTS_EVENT))}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          className={`mb-4 flex items-center rounded border border-slate-200 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 ${
+            collapsed ? "justify-center px-1.5" : "justify-between px-2"
+          }`}
+        >
+          {collapsed ? (
+            <span aria-hidden="true">?</span>
+          ) : (
+            <>
+              <span>Keyboard shortcuts</span>
+              <span className="rounded border border-slate-300 bg-slate-50 px-1 font-mono dark:border-slate-600 dark:bg-slate-800">
+                ?
+              </span>
+            </>
+          )}
+        </button>
+
         <ul className="flex-1 space-y-1">
           {NAV_SECTIONS.map((section) => (
             <li key={section.to}>
@@ -140,6 +159,7 @@ export default function NavShell() {
         <Outlet />
       </main>
       <CommandPalette />
+      <KeyboardShortcutsModal />
     </div>
   );
 }

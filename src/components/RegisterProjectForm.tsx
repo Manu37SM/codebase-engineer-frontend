@@ -14,7 +14,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 interface RegisterProjectFormProps {
-  /** Called after a successful register, with the new project's id — callers decide what to do next (e.g. select it, refresh a list). */
+
   onRegistered: (projectId: string) => void | Promise<void>;
   className?: string;
 }
@@ -28,14 +28,6 @@ const MODE_LABELS: Record<Mode, string> = {
   drive: "Google Drive",
 };
 
-// User request: hide the "Zip URL" tab from the tab bar rather than
-// removing the feature outright — the underlying mode, form fields, and
-// backend route are all still fully functional (a genuine direct-download
-// link, e.g. a GitHub release asset or S3 object, still works fine);
-// what's unreliable in practice is the *kind* of link people tend to paste
-// there (Google Drive/OneDrive share pages, see zipUrl.ts's own
-// doc comments), not the feature itself. Flipping this back to true
-// re-shows the tab with no other changes needed.
 const SHOW_ZIP_URL_TAB = false;
 const VISIBLE_MODES = (["zip", "git", "github", "drive"] as const).filter((m) => m !== "zip" || SHOW_ZIP_URL_TAB);
 
@@ -45,7 +37,7 @@ function hasAgreedToDisclosure(): boolean {
   try {
     return window.localStorage.getItem(DISCLOSURE_AGREED_STORAGE_KEY) === "1";
   } catch {
-    return false; // localStorage unavailable — fall back to asking every time
+    return false; 
   }
 }
 
@@ -53,32 +45,10 @@ function rememberDisclosureAgreed(): void {
   try {
     window.localStorage.setItem(DISCLOSURE_AGREED_STORAGE_KEY, "1");
   } catch {
-    // ignore storage failures — the dialog just reappears next time
+
   }
 }
 
-/**
- * The "register a repository" form, extracted out of Repositories.tsx
- * (Task #93) so the Dashboard's empty state can offer the same
- * register-right-here flow. Task #85 added a remote git URL and a plain
- * zip/download URL as sources. Task #84 added browsing the repositories
- * of whichever GitHub account the user signed in with (Task #83) and
- * cloning one directly. Task #86 adds a fourth source: browse zip files
- * in whichever Google account the user signed in with (Task #82) and
- * import one directly.
- *
- * "Local path" (register an absolute path already on the machine running
- * the app) used to be a fifth tab here, and was the default/first one.
- * It's been removed for this deployment: this instance runs on a remote
- * server, so an "absolute path" typed here has to be a path that exists
- * *inside that server's own filesystem* — never a path on the user's own
- * PC, which is what people kept typing (see the "Project root must be an
- * absolute path" rejection this caused). Every remaining source (Zip URL,
- * Git URL, GitHub, Google Drive) downloads/clones into this server's data
- * directory instead, so there's nothing for the user to get right about
- * whose filesystem a path lives on. Zip URL is first since it needs no
- * account connection at all, unlike GitHub/Google Drive.
- */
 export default function RegisterProjectForm({ onRegistered, className }: RegisterProjectFormProps) {
   const { user } = useAuth();
   const [mode, setMode] = useState<Mode>(SHOW_ZIP_URL_TAB ? "zip" : "git");
@@ -104,29 +74,10 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
   const githubConnected = Boolean(user?.githubConnected);
   const driveConnected = Boolean(user?.driveConnected);
 
-  // SLOW_LOAD_MS: how long to wait before suggesting a reconnect. A stuck
-  // "Loading your repositories…" (reported by the user) most likely means
-  // the stored OAuth token is stale/revoked and the underlying GitHub/
-  // Google API call is hanging rather than failing outright with a clean
-  // error this UI would otherwise show. There's no "Disconnect" button in
-  // this app (see Billing.tsx's Connected accounts section) — the fix is
-  // a full sign-out/sign-in via the OAuth button on the login page, which
-  // re-runs the authorization and stores a fresh token.
   const SLOW_LOAD_MS = 10_000;
 
   useEffect(() => {
-    // Bug (caught by the new slow-load test, not just inferred): this
-    // effect used to also list `reposLoading` as a dependency. Calling
-    // setReposLoading(true) below changes that same dependency, which
-    // makes React re-run this effect on the very next commit — and
-    // *before* the new invocation runs, it fires this effect's own
-    // cleanup (`clearTimeout(slowTimer)`), clearing the timer the
-    // previous run had just started. Net effect: the "taking longer than
-    // usual" warning could never actually fire, because its timer was
-    // cancelled within the same tick it was created. `repos !== null`
-    // already covers "don't re-fetch once loaded"; `reposLoading` in the
-    // dependency array was never needed for that and only existed as
-    // leftover self-reference — removed rather than worked around.
+
     if (mode !== "github" || !githubConnected || repos !== null || reposLoading) return;
     setReposLoading(true);
     setReposError(null);
@@ -140,14 +91,11 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
         clearTimeout(slowTimer);
       });
     return () => clearTimeout(slowTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reposLoading deliberately excluded, see comment above
+
   }, [mode, githubConnected, repos]);
 
   useEffect(() => {
-    // Same fix as the GitHub effect above — driveFilesLoading deliberately
-    // excluded from the dependency array so its own setDriveFilesLoading(true)
-    // call doesn't self-trigger a re-run whose cleanup clears the timer
-    // before it can ever fire.
+
     if (mode !== "drive" || !driveConnected || driveFiles !== null || driveFilesLoading) return;
     setDriveFilesLoading(true);
     setDriveFilesError(null);
@@ -161,16 +109,9 @@ export default function RegisterProjectForm({ onRegistered, className }: Registe
         clearTimeout(slowTimer);
       });
     return () => clearTimeout(slowTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- driveFilesLoading deliberately excluded, see comment above
+
   }, [mode, driveConnected, driveFiles]);
 
-  // Task: a one-time disclosure ("nothing stays on your machine, AI
-  // patches are download-only, etc.") shown right after "Register &
-  // continue" is clicked, the first time only — an Agree/Cancel dialog
-  // gates the actual import, then never appears again on this browser.
-  // handleSubmit does the same field validation regardless of which tab
-  // is active (Zip URL, Git URL, GitHub, Google Drive all funnel through
-  // here), so gating it here covers all four import sources at once.
   const [showDisclosure, setShowDisclosure] = useState(false);
 
   function reset() {

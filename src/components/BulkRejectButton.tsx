@@ -2,26 +2,16 @@ import { useState } from "react";
 import { ApiError, type BulkRejectResult } from "../lib/api";
 
 interface BulkRejectButtonProps {
-  /** Only ever rendered by the caller when the current tier is "pro". */
+
   itemDescription: string;
   disabled?: boolean;
   onRun: () => Promise<BulkRejectResult>;
-  /** Called once the summary is dismissed — lets the caller refresh its list. */
+
   onDone: () => void;
 }
 
 type Step = "idle" | "confirm" | "running" | "summary" | "error";
 
-/**
- * Pro-tier "Reject all" — the bulk counterpart to the per-row Reject button
- * on a patch that's past the diff-review gate ('proposed' or
- * 'approved_for_apply'). Deliberately a separate, simpler component from
- * BulkAiFixButton: this never calls an AI provider (it's a pure DB status
- * change), so there's no token usage to show and no "using your AI
- * provider" copy — just a clear confirm step naming what will be rejected,
- * since rejecting is a one-way action a reviewer should not trigger by
- * accident.
- */
 export default function BulkRejectButton({ itemDescription, disabled, onRun, onDone }: BulkRejectButtonProps) {
   const [step, setStep] = useState<Step>("idle");
   const [result, setResult] = useState<BulkRejectResult | null>(null);

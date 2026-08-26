@@ -13,19 +13,9 @@ import LoginPage from "./pages/Login";
 import RegisterPage from "./pages/Register";
 import { useAuth } from "./context/AuthContext";
 
-/**
- * Task #91: the single choke point deciding whether the app's real pages
- * render or the login screen does — mirrors the backend's own single
- * choke point (`authGuard` in backend/src/auth/guard.ts). In open mode
- * (`authRequired: false`, the default with zero accounts registered) this
- * is a no-op, exactly like the backend guard — nothing changes for an
- * install that never sets up an account.
- */
 function RequireAuth() {
   const { authRequired, user, loading } = useAuth();
 
-  // Avoid a login-screen flash while the very first /auth/me check is
-  // still in flight — render nothing rather than guessing.
   if (loading) return null;
 
   if (authRequired && !user) {

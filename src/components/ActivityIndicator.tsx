@@ -1,21 +1,5 @@
 import { useEffect, useState } from "react";
 
-/**
- * A live progress indicator for actions that genuinely take a while
- * (repository scans, analysis runs, test runs, AI calls) — Task #78,
- * replacing static "Loading…"/"Running…" text.
- *
- * This app's long-running actions (`POST /discover`, `/analysis`,
- * `/tests`, the AI workflow routes) are each a single request that blocks
- * until the whole operation finishes — the backend has no incremental
- * "40% done" signal to report, and fabricating one would violate this
- * project's "never fabricate" convention just as much as a fake test
- * count would. What IS real and worth showing live: that the action is
- * actively running (an animated spinner, not a static string) and exactly
- * how long it's been running — both drawn from the browser's own clock,
- * not guessed. That's enough to tell a user "this hasn't hung" without
- * inventing a percentage that doesn't exist.
- */
 export default function ActivityIndicator({ label }: { label: string }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 

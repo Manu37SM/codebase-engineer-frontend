@@ -16,9 +16,6 @@ vi.mock("../lib/api", async () => {
   };
 });
 
-// Stub the real Cloudflare-script-loading widget so these tests are
-// deterministic regardless of whether frontend/.env sets a real
-// VITE_TURNSTILE_SITE_KEY — auto-verifies as soon as it would render.
 vi.mock("../components/Turnstile", () => ({
   default: ({ onVerify }: { onVerify: (token: string) => void }) => {
     onVerify("test-token");
@@ -54,7 +51,7 @@ describe("LoginPage", () => {
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: true, user: null });
     mockedApi.login.mockReset();
     mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false, turnstile: false });
-    // Deterministic regardless of whether frontend/.env sets a real key.
+
     vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "test-site-key");
   });
 

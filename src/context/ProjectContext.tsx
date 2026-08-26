@@ -32,7 +32,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     try {
       return window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
     } catch {
-      return null; // localStorage unavailable (e.g. some test environments)
+      return null; 
     }
   });
 
@@ -59,7 +59,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       if (id) window.localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, id);
       else window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
     } catch {
-      // ignore storage failures — selection still works for this session
+
     }
   }, []);
 

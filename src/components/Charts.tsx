@@ -15,22 +15,11 @@ import {
 } from "recharts";
 import type { AnalysisRun, FileChurn, FindingRecord, LanguageStat } from "../lib/types";
 
-/**
- * Real-data charts (Task #76) — every chart here is derived directly from
- * data this app already computes and stores; nothing is synthesized or
- * randomly generated for visual effect. Where the underlying data can be
- * honestly unknown (e.g. an analysis run from before the severity-snapshot
- * migration — see backend/src/db/migrations/013_*.sql), the chart shows a
- * gap rather than plotting a fabricated zero, matching this project's
- * "never fabricate" convention elsewhere (test counts, self-review
- * statuses, etc.).
- */
-
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#dc2626", // red-600
-  high: "#ea580c", // orange-600
-  medium: "#d97706", // amber-600
-  low: "#64748b", // slate-500
+  critical: "#dc2626", 
+  high: "#ea580c", 
+  medium: "#d97706", 
+  low: "#64748b", 
 };
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"] as const;

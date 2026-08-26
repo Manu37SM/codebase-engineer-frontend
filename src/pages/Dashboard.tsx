@@ -48,9 +48,7 @@ export default function DashboardPage() {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [checkingRemoveId, setCheckingRemoveId] = useState<string | null>(null);
-  // Same warning as Repositories.tsx's — only shown when the project
-  // actually has AI-generated patches, since that's the only case with
-  // something extra worth calling out before removing it.
+
   const [removeWarning, setRemoveWarning] = useState<{ projectId: string; projectName: string; patchCount: number } | null>(
     null
   );
@@ -67,8 +65,7 @@ export default function DashboardPage() {
   const [analysisRunsError, setAnalysisRunsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Shown once right after a successful registration — see
-  // components/AiProviderReminder.tsx for why this isn't a hard gate.
+
   const [showAiReminder, setShowAiReminder] = useState(false);
 
   useEffect(() => {
@@ -107,8 +104,6 @@ export default function DashboardPage() {
         if (!cancelled) setLoading(false);
       });
 
-    // Fetched independently — a Git failure (e.g. `git` not installed)
-    // shouldn't block the rest of the dashboard from rendering.
     setGitAnalysis(null);
     setGitError(null);
     getGitAnalysis(selectedProject.id)
@@ -119,7 +114,6 @@ export default function DashboardPage() {
         if (!cancelled) setGitError(err instanceof Error ? err.message : "Failed to load Git activity");
       });
 
-    // Also fetched independently, same reasoning as Git activity above.
     setDependencies(null);
     setDependenciesError(null);
     getDependencies(selectedProject.id)
@@ -131,8 +125,6 @@ export default function DashboardPage() {
           setDependenciesError(err instanceof Error ? err.message : "Failed to load dependencies");
       });
 
-    // Also fetched independently — charts should degrade individually,
-    // not take down the whole dashboard if one call fails.
     setFindings(null);
     setFindingsError(null);
     listFindings(selectedProject.id)
@@ -157,18 +149,9 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-    // `scanVersion` is a deliberate extra dependency, not read inside the
-    // effect — it's bumped by handleScanNow() below purely to force this
-    // whole fetch to re-run after an inline scan completes, without
-    // needing `selectedProject` itself to change identity.
+
   }, [selectedProject, scanVersion]);
 
-  // Discover + index + run the (deterministic, no-AI-required) analysis
-  // that produces findings — used to only discover+index here, leaving
-  // findings to a separate, easy-to-miss "Run Analysis" click on the
-  // Findings page. Folding analysis into "Scan" means findings are ready
-  // the moment a scan finishes; Findings' own "Run Analysis" button still
-  // works exactly as before for a manual re-run.
   async function scanProject(projectId: string) {
     setScanning(true);
     setScanError(null);
@@ -185,17 +168,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Bug fix: this used to call `selectProject(id)` alone, without
-  // refreshing the projects list first — `selectedProject` is derived by
-  // looking `selectedProjectId` up in `projects` (ProjectContext.tsx), so
-  // a just-registered project (not yet in that list) resolved to nothing
-  // and the page silently stayed on the "Welcome" screen until a manual
-  // page reload re-fetched the list. Refreshing first, then selecting,
-  // means the newly registered repo's workspace renders immediately.
-  // Also runs the "auto-scan after registering" setting (see
-  // lib/settings.ts) so a fresh registration shows real findings/
-  // dependencies/Git activity right away instead of an empty
-  // "hasn't been scanned yet" screen requiring a separate click.
   async function handleRegistered(projectId: string) {
     await refreshProjects();
     selectProject(projectId);
@@ -226,7 +198,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Same "check for patches first" gate as Repositories.tsx.
   async function handleRemoveClick(projectId: string, projectName: string) {
     setCheckingRemoveId(projectId);
     try {
@@ -243,11 +214,6 @@ export default function DashboardPage() {
     }
   }
 
-  // No project selected yet — the app's very first screen for a new
-  // install. Task #93: this used to be a single sentence pointing at the
-  // Repositories page in the sidebar; now the same actions happen right
-  // here, so a first-time user never has to go hunting in the nav to get
-  // started.
   if (!selectedProject) {
     if (projectsLoading) {
       return (
@@ -284,11 +250,6 @@ export default function DashboardPage() {
       );
     }
 
-    // Repositories already exist — offer a one-click picker instead of a
-    // plain link, so returning to a multi-project setup doesn't require a
-    // detour through the sidebar either. Each card also offers Remove
-    // (Task #94) right here, with an inline confirm step — no detour to
-    // Repositories needed for that either.
     return (
       <div>
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Choose a repository</h1>
@@ -438,12 +399,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 max-w-full">
           {projects.length > 1 ? (
-            // Per user request: rather than a small separate dropdown off
-            // to the side duplicating the project name, the whole
-            // name+path header block IS the switcher — a native <select>
-            // styled to look like the plain heading it replaces, so
-            // clicking anywhere on the project's own name opens the list
-            // of repositories to switch between.
+
             <div className="relative inline-block max-w-full">
               <select
                 aria-label="Switch repository"

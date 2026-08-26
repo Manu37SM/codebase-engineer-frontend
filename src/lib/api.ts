@@ -36,12 +36,6 @@ import type {
   AnalysisHistoryResult,
 } from "./types";
 
-/**
- * Thin typed fetch wrapper around the backend API. Requests are relative
- * (`/api/v1/...`) so they work both via the Vite dev proxy (see
- * vite.config.ts) and once frontend+backend are served together in a
- * packaged build (Phase 24).
- */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -55,18 +49,7 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    // Only attach Content-Type: application/json when there's an actual
-    // body to describe. A bodyless GET/DELETE that still carries this
-    // header can end up with an empty-string body once it passes through
-    // some proxy layers (e.g. Vite's dev proxy, which can add
-    // `Content-Length: 0`) — Fastify's default JSON body parser treats
-    // Content-Type: application/json + a zero-length body as an error
-    // (`FST_ERR_CTP_EMPTY_JSON_BODY`, a real 400 "Bad Request" this app
-    // hit in practice on every GET, since app.inject()-based tests don't
-    // go through a real HTTP proxy and never exercised this path).
-    // Omitting the header on bodyless requests avoids the ambiguity
-    // entirely, regardless of which layer would have added the
-    // zero-length Content-Length.
+
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {}),
@@ -77,20 +60,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let message = `Request to ${path} failed with status ${response.status}`;
     try {
       const body = await response.json();
-      // Prefer `message` (the specific detail) over `error` — Fastify's
-      // own framework-level errors (as opposed to this app's own routes)
-      // put a generic HTTP reason phrase like "Bad Request" in `error`
-      // and the actually useful text in `message`; this app's own routes
-      // only ever set `error`, so falling back to it keeps those intact.
+
       if (body?.message) message = body.message;
       else if (body?.error) message = body.error;
     } catch {
-      // response body wasn't JSON — keep the generic message
+
     }
     throw new ApiError(message, response.status);
   }
 
-  // 204 No Content (e.g. DELETE) has no body to parse.
   if (response.status === 204) return undefined as T;
 
   return (await response.json()) as T;
@@ -107,7 +85,6 @@ export function createProject(name: string, rootPath: string): Promise<{ project
   });
 }
 
-/** Registers a project by cloning a remote git URL or downloading+extracting a zip URL (Task #85). Can take a while for a large repo/archive — the caller should show a busy state. */
 export function importProject(
   name: string,
   sourceType: "git" | "zip",
@@ -119,10 +96,8 @@ export function importProject(
   });
 }
 
-// --- Multi-project-in-folder detection (Task #87) ----------------------
-
 export interface SubProjectCandidate {
-  /** POSIX-style path relative to the project root; "" means the root itself. */
+
   relativePath: string;
   markers: string[];
 }
@@ -133,12 +108,10 @@ export interface MultiProjectDetectionResult {
   truncated: boolean;
 }
 
-/** Scans a registered project's root for other plausible nested project roots (a monorepo, an org-wide zip, etc.). Read-only — never registers anything. */
 export function detectSubProjects(projectId: string): Promise<MultiProjectDetectionResult> {
   return request(`/api/v1/projects/${projectId}/subprojects`);
 }
 
-/** Registers a detected sub-directory as its own separate project — the parent registration is left untouched. */
 export function registerSubProject(
   projectId: string,
   relativePath: string,
@@ -156,12 +129,6 @@ export function getProject(
   return request(`/api/v1/projects/${id}`);
 }
 
-/**
- * Removes a project from the workspace — its findings, snapshots, indexed
- * files, and everything else derived from it, but NOT the real repository
- * on disk (Task #94). Re-registering the same path afterwards starts
- * fresh.
- */
 export function deleteProject(id: string): Promise<void> {
   return request(`/api/v1/projects/${id}`, { method: "DELETE" });
 }
@@ -212,30 +179,15 @@ export function listFindings(
   return request(`/api/v1/projects/${id}/findings${qs ? `?${qs}` : ""}`);
 }
 
-/** Real analysis-run history (oldest first), behind the Dashboard's findings-trend chart. */
 export function getAnalysisHistory(id: string): Promise<AnalysisHistoryResult> {
   return request(`/api/v1/projects/${id}/analysis/history`);
 }
 
-/**
- * Fetches the `ContextBundle` an AI provider would receive for a single
- * finding (Phase 13). Nothing consumes this yet — Phase 14 will pass it to
- * `AIProvider.complete()` — this is a preview only, so people can see
- * exactly what would be sent and why anything was left out, before any
- * AI feature exists that actually sends it anywhere.
- */
 export function getFindingContext(id: string, findingId: string, budgetTokens?: number): Promise<ContextBundle> {
   const qs = budgetTokens !== undefined ? `?budgetTokens=${budgetTokens}` : "";
   return request(`/api/v1/projects/${id}/findings/${findingId}/context${qs}`);
 }
 
-/**
- * Phase 14's first real AI call: asks the configured (enabled) provider to
- * explain a finding, using the Phase 13 context bundle as grounding
- * content. Only fires on an explicit call from a button click — never
- * automatically — per docs/AI_MODE.md §1's "no AI action auto-executes"
- * rule.
- */
 export function explainFinding(
   id: string,
   findingId: string,
@@ -247,16 +199,10 @@ export function explainFinding(
   });
 }
 
-/** Read-only: the most recent successful explanation on file, if any — never calls a provider. */
 export function getFindingExplanation(id: string, findingId: string): Promise<StoredExplanation> {
   return request(`/api/v1/projects/${id}/findings/${findingId}/explanation`);
 }
 
-/**
- * Phase 15's AI call: asks the configured provider to separate evidence
- * from inference for a finding. Only fires on an explicit call — never
- * automatically.
- */
 export function analyzeRootCause(
   id: string,
   findingId: string,
@@ -268,16 +214,10 @@ export function analyzeRootCause(
   });
 }
 
-/** Read-only: the most recent successful root-cause analysis on file, if any — never calls a provider. */
 export function getFindingRootCause(id: string, findingId: string): Promise<StoredRootCauseAnalysis> {
   return request(`/api/v1/projects/${id}/findings/${findingId}/root-cause`);
 }
 
-/**
- * Phase 16's AI call: asks the configured provider for the seven-section
- * fix plan docs/AI_MODE.md §5 defines. Advisory only — never fires
- * automatically, and produces no diff or applied change.
- */
 export function planFix(
   id: string,
   findingId: string,
@@ -289,16 +229,9 @@ export function planFix(
   });
 }
 
-/** Read-only: the most recent successful fix plan on file, if any — never calls a provider. */
 export function getFindingFixPlan(id: string, findingId: string): Promise<StoredFixPlan> {
   return request(`/api/v1/projects/${id}/findings/${findingId}/fix-plan`);
 }
-
-// AI Mode — Patch Generation (Phase 17). Creating a patch never calls a
-// provider — it only registers intent, in 'pending_approval'. Approving
-// is the first human-approval gate; generating is the only call that
-// actually spends tokens, and only works once approved (enforced
-// server-side, not just by this client hiding the button).
 
 export function listFindingPatches(id: string, findingId: string): Promise<{ patches: PatchRecord[] }> {
   return request(`/api/v1/projects/${id}/findings/${findingId}/patches`);
@@ -336,18 +269,16 @@ export function generatePatch(
   });
 }
 
-/** Shared shape for both Pro-tier bulk-fix actions (Findings' fix-all and Changes' generate-all) — a real per-item outcome list plus real accumulated token usage, never a fabricated estimate. */
 export interface BulkFixResult {
   attempted: number;
   succeeded: number;
   failed: number;
-  /** How many eligible items were left out by the server's per-call safety cap — surfaced, never hidden. */
+
   skipped: number;
   results: Array<{ findingId?: string; patchId: string | null; error: string | null }>;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
-/** Pro-tier only (enforced server-side) — see backend/src/routes/projects.ts's "Fix all findings" section. */
 export function fixAllFindings(
   id: string,
   options?: { providerId?: string; budgetTokens?: number }
@@ -358,7 +289,6 @@ export function fixAllFindings(
   });
 }
 
-/** Pro-tier only (enforced server-side) — see backend/src/routes/projects.ts's "Approve & generate all" section. */
 export function generateAllPatches(
   id: string,
   options?: { providerId?: string; budgetTokens?: number }
@@ -368,12 +298,6 @@ export function generateAllPatches(
     body: JSON.stringify(options ?? {}),
   });
 }
-
-// AI Mode — Diff Review & Apply (Phase 18). The second human-approval
-// gate: a generated diff must be reviewed and approved again — separately
-// from approving that generation should happen at all — before /apply
-// will touch any file. /apply is the only call in this product that
-// writes to disk, and only works once approved (enforced server-side).
 
 export function approvePatchApply(id: string, patchId: string, reviewerNote?: string): Promise<{ patch: PatchRecord }> {
   return request(`/api/v1/projects/${id}/patches/${patchId}/approve-apply`, {
@@ -389,7 +313,6 @@ export function rejectPatchApply(id: string, patchId: string, reviewerNote?: str
   });
 }
 
-/** Result shape for "Reject all" — same as BulkFixResult but no `usage`, since this never calls an AI provider (pure DB state change). */
 export interface BulkRejectResult {
   attempted: number;
   succeeded: number;
@@ -398,7 +321,6 @@ export interface BulkRejectResult {
   results: Array<{ patchId: string; error: string | null }>;
 }
 
-/** Pro-tier only (enforced server-side) — rejects every patch still awaiting a decision past the diff-review gate ('proposed' or 'approved_for_apply'). */
 export function rejectAllPatches(id: string, reviewerNote?: string): Promise<BulkRejectResult> {
   return request(`/api/v1/projects/${id}/patches/reject-all`, {
     method: "POST",
@@ -410,10 +332,6 @@ export function applyPatch(id: string, patchId: string): Promise<{ patch: PatchR
   return request(`/api/v1/projects/${id}/patches/${patchId}/apply`, { method: "POST" });
 }
 
-// Task #90: per-project setting for what "apply" does — write straight to
-// disk ("direct") or refuse in favor of a zip download ("download"), plus
-// the download route itself.
-
 export function updateProjectApplyMode(id: string, applyMode: "direct" | "download"): Promise<{ project: Project }> {
   return request(`/api/v1/projects/${id}/settings`, {
     method: "PATCH",
@@ -421,15 +339,9 @@ export function updateProjectApplyMode(id: string, applyMode: "direct" | "downlo
   });
 }
 
-/** Real browser-navigable URL (not a `request()` JSON call) — the caller opens/links to this so the browser handles the file download itself. */
 export function getPatchDownloadZipUrl(id: string, patchId: string): string {
   return `/api/v1/projects/${id}/patches/${patchId}/download-zip`;
 }
-
-// AI Mode — Self-Review (Phase 21). docs/AI_MODE.md §6's checklist,
-// advisory only — never changes a patch's status and is never a
-// precondition for approve-apply/apply. Can be requested at any point
-// once the patch has a real diff.
 
 export function selfReviewPatch(
   id: string,
@@ -442,16 +354,9 @@ export function selfReviewPatch(
   });
 }
 
-/** Read-only: the most recent successful self-review on file for a patch, if any — never calls a provider. */
 export function getPatchSelfReview(id: string, patchId: string): Promise<StoredSelfReview> {
   return request(`/api/v1/projects/${id}/patches/${patchId}/self-review`);
 }
-
-// AI Mode — AI Test Generation (Phase 19). Mirrors the patch lifecycle's
-// two gates: creating never calls a provider, generating never writes a
-// file, and write-and-run always executes the project's real test
-// command after writing — the "reviewed & executed" half of
-// docs/AI_MODE.md §1's requirement, enforced server-side.
 
 export function listFindingGeneratedTests(id: string, findingId: string): Promise<{ generatedTests: GeneratedTestRecord[] }> {
   return request(`/api/v1/projects/${id}/findings/${findingId}/generated-tests`);
@@ -507,11 +412,6 @@ export function writeAndRunGeneratedTest(id: string, testId: string): Promise<Wr
   return request(`/api/v1/projects/${id}/generated-tests/${testId}/write-and-run`, { method: "POST" });
 }
 
-// Changes page (unified review queue) — every patch and generated test for
-// the whole project in one call, regardless of which finding produced it.
-// Taking action on any listed item still goes through the existing
-// per-item approve/reject/generate/apply/write-and-run functions above —
-// this is read-only, just a different way of listing the same rows.
 export function listChanges(id: string): Promise<ChangesResult> {
   return request(`/api/v1/projects/${id}/changes`);
 }
@@ -542,22 +442,14 @@ export function getTestRun(id: string, runId: string): Promise<{ run: TestRunRec
   return request(`/api/v1/projects/${id}/tests/${runId}`);
 }
 
-/** Deletes one entry from the run history. Only the recorded run is removed — never re-runs anything, never touches the real test suite on disk. */
 export function deleteTestRun(id: string, runId: string): Promise<{ deleted: boolean }> {
   return request(`/api/v1/projects/${id}/tests/${runId}`, { method: "DELETE" });
 }
 
-/** Pro-tier only (enforced server-side) — clears the entire run history for a project in one call. */
 export function deleteAllTestRuns(id: string): Promise<{ deleted: number }> {
   return request(`/api/v1/projects/${id}/tests`, { method: "DELETE" });
 }
 
-/**
- * Phase 20's AI call: docs/AI_MODE.md §4's "(if failure) AI Diagnosis"
- * step, for a failed TestRun. Only fires on an explicit call — never
- * automatically — and only succeeds server-side for a run whose status
- * is `failed`.
- */
 export function diagnoseTestFailure(
   id: string,
   runId: string,
@@ -569,7 +461,6 @@ export function diagnoseTestFailure(
   });
 }
 
-/** Read-only: the most recent successful failure diagnosis on file for a test run, if any — never calls a provider. */
 export function getTestFailureDiagnosis(id: string, runId: string): Promise<StoredFailureDiagnosis> {
   return request(`/api/v1/projects/${id}/tests/${runId}/diagnosis`);
 }
@@ -582,17 +473,9 @@ export function getAudit(id: string): Promise<AuditReport> {
   return request(`/api/v1/projects/${id}/audit`);
 }
 
-/**
- * Relative path (not a `request()` call) — this is a file download, so the
- * caller renders it as a plain `<a href>` and lets the browser handle the
- * `Content-Disposition: attachment` response rather than fetching JSON.
- */
 export function getAuditExportUrl(id: string): string {
   return `/api/v1/projects/${id}/audit/export`;
 }
-
-// AI Mode — provider configuration (Phase 12). Not project-scoped: a
-// provider is configured once and can be used across every project.
 
 export function listAiProviders(): Promise<{ providers: AIProviderConfig[] }> {
   return request("/api/v1/ai/providers");
@@ -635,21 +518,14 @@ export function createBillingCheckout(): Promise<CheckoutSession> {
   return request("/api/v1/billing/checkout", { method: "POST" });
 }
 
-// Auth (Task #91) — local accounts + session cookie. `getCurrentUser`
-// (`GET /api/v1/auth/me`) is the one endpoint that's ALWAYS reachable
-// (see backend/src/auth/guard.ts's public-path allowlist), so it's safe
-// to call before knowing whether auth is even turned on for this
-// instance — `authRequired: false` means every other route already works
-// with no session at all (open/legacy mode, see docs/AUTH.md §1).
-
 export interface AuthUser {
   id: string;
   email: string;
   displayName: string | null;
   createdAt: string;
-  /** Whether this user has a live GitHub OAuth token on file (Task #84) — lets the UI offer "browse your GitHub repos" without a failed round trip. */
+
   githubConnected: boolean;
-  /** Whether this user has a live Google OAuth token on file (Task #86) — lets the UI offer "browse your Google Drive" without a failed round trip. */
+
   driveConnected: boolean;
 }
 
@@ -683,7 +559,6 @@ export function logout(): Promise<{ ok: boolean }> {
   return request("/api/v1/auth/logout", { method: "POST" });
 }
 
-/** Relative paths, not `request()` calls — these are real browser navigations to the backend's OAuth `/start` routes, not JSON API calls. */
 export function getGoogleSignInUrl(): string {
   return "/api/v1/auth/google/start";
 }
@@ -691,12 +566,9 @@ export function getGitHubSignInUrl(): string {
   return "/api/v1/auth/github/start";
 }
 
-/** Which OAuth providers are actually configured server-side — lets the login/register pages hide buttons that would otherwise 404. */
 export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
   return request("/api/v1/auth/providers");
 }
-
-// --- GitHub repo browser + clone-to-register (Task #84) ---------------
 
 export interface GitHubRepoSummary {
   id: number;
@@ -710,20 +582,16 @@ export interface GitHubRepoSummary {
   fork: boolean;
 }
 
-/** Lists the signed-in user's GitHub repos using the token stored from GitHub sign-in. 400s if GitHub isn't connected yet. */
 export function listGitHubRepos(): Promise<{ repos: GitHubRepoSummary[]; truncated: boolean }> {
   return request("/api/v1/github/repos");
 }
 
-/** Clones (using the stored token, so private repos work too) and registers a picked GitHub repo. Can take a while for a large repo — the caller should show a busy state. */
 export function importGitHubRepo(fullName: string, name?: string): Promise<{ project: Project }> {
   return request("/api/v1/github/import", {
     method: "POST",
     body: JSON.stringify({ fullName, name }),
   });
 }
-
-// --- Google Drive zip-file picker (Task #86) ---------------------------
 
 export interface DriveFileSummary {
   id: string;
@@ -733,12 +601,10 @@ export interface DriveFileSummary {
   size: string | null;
 }
 
-/** Lists zip files in the signed-in user's Google Drive using the token stored from Google sign-in. 400s if Google isn't connected yet. */
 export function listDriveZipFiles(): Promise<{ files: DriveFileSummary[]; truncated: boolean }> {
   return request("/api/v1/google-drive/zips");
 }
 
-/** Downloads (using the stored token) and registers a picked Drive zip file. Can take a while for a large archive — the caller should show a busy state. */
 export function importDriveZipFile(fileId: string, name?: string): Promise<{ project: Project }> {
   return request("/api/v1/google-drive/import", {
     method: "POST",

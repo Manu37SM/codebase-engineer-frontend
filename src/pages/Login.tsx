@@ -6,11 +6,6 @@ import Turnstile from "../components/Turnstile";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
 
-/**
- * Task #91. Only ever rendered when `authRequired` is true (App.tsx keeps
- * this route reachable regardless, but there's nothing to gate — an open
- * instance has no login wall at all, see docs/AUTH.md §1).
- */
 export default function LoginPage() {
   const { refresh } = useAuth();
   const navigate = useNavigate();

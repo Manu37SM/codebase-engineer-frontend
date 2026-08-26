@@ -325,9 +325,7 @@ describe("TestsPage", () => {
       await screen.findByText("Run history");
 
       const user = userEvent.setup();
-      // PASSED_RUN and FAILED_RUN share the same fixture started_at, so
-      // both rows render an identical aria-label — target the first (the
-      // list is in listTestRuns' returned order, PASSED_RUN first).
+
       await user.click(screen.getAllByRole("button", { name: /Delete run from/ })[0]);
       await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -388,7 +386,7 @@ describe("TestsPage", () => {
       const user = userEvent.setup();
       await user.click(deleteAllButton);
       await screen.findByText("Delete all run history?");
-      // Two "Delete all" buttons now exist (header + dialog) — the dialog's is the last one.
+
       const dialogButtons = screen.getAllByRole("button", { name: "Delete all" });
       await user.click(dialogButtons[dialogButtons.length - 1]);
 

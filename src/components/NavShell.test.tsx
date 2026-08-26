@@ -60,12 +60,10 @@ describe("NavShell sidebar collapse (Task #88)", () => {
     expect(within(nav).queryByText("Repositories")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("codebase-engineer.sidebarCollapsed")).toBe("1");
 
-    // Links are still reachable (icon-only, with a title tooltip) — not removed, just visually collapsed.
     expect(within(nav).getByTitle("Repositories")).toBeInTheDocument();
 
     unmount();
 
-    // Remounting should read the persisted collapsed state.
     renderShell();
     const navAgain = await screen.findByRole("navigation", { name: "Primary" });
     expect(within(navAgain).queryByText("Repositories")).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import {
@@ -23,24 +23,6 @@ import type { GeneratedTestWithFindingContext, PatchWithFindingContext } from ".
 import BulkAiFixButton from "../components/BulkAiFixButton";
 import BulkRejectButton from "../components/BulkRejectButton";
 
-/**
- * The Changes page — a real unified review queue, replacing the old
- * "implemented in Phase 17/18" placeholder. Everything a patch or a
- * generated test can be *for* still lives per-finding on the Findings page
- * (that's where they're created); this page is the other half of the same
- * data — every patch and every generated test across the *whole* project,
- * in one queue, so a reviewer doesn't have to hunt through every finding
- * to find what's still waiting on a decision.
- *
- * Every action button here calls the exact same API functions the
- * Findings page's inline patch/test review UI calls (approve/reject/
- * generate/apply/write-and-run) — this page adds no new mutation surface,
- * only a different, project-wide way of listing and acting on the same
- * underlying rows. State (status, diff_text, test_code, apply_error, …)
- * is refetched from `listChanges` after every action rather than guessed
- * client-side, so this page can never show a status that doesn't match
- * what's really in the database.
- */
 export default function ChangesPage() {
   const { selectedProject } = useProjects();
   const [patches, setPatches] = useState<PatchWithFindingContext[]>([]);
@@ -51,21 +33,32 @@ export default function ChangesPage() {
   const [tab, setTab] = useState<"patches" | "tests">("patches");
   const [filter, setFilter] = useState<"all" | "pending">("pending");
 
+  // Guards against a stale response overwriting newer state if the user
+  // switches projects while a request is still in flight (see the same
+  // fix in Findings.tsx).
+  const loadRequestId = useRef(0);
+
   function load() {
     if (!selectedProject) return;
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     setError(null);
     listChanges(selectedProject.id)
       .then((res) => {
+        if (requestId !== loadRequestId.current) return;
         setPatches(res.patches);
         setGeneratedTests(res.generatedTests);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load changes"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (requestId !== loadRequestId.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load changes");
+      })
+      .finally(() => {
+        if (requestId !== loadRequestId.current) return;
+        setLoading(false);
+      });
   }
 
-  // "Approve & generate all" (per the user's explicit request that this
-  // behave the same way as Findings' "Fix all findings") is Pro-tier only.
   const [tier, setTier] = useState<"free" | "pro" | null>(null);
   useEffect(() => {
     getBillingStatus()
@@ -253,13 +246,7 @@ export default function ChangesPage() {
                     >
                       {patch.status === "failed" ? "Retry apply" : "Apply patch"}
                     </button>
-                    {/* Bug fix: previously there was no way to back out once a diff
-                        passed the second approval gate — only Apply was offered,
-                        even for someone who changed their mind before actually
-                        writing to disk. Reject is available here too now. Only
-                        for "approved_for_apply" — a "failed" apply already tried
-                        and failed to write anything, so the backend's reject-apply
-                        route (correctly) doesn't accept that status. */}
+                    {}
                     {patch.status === "approved_for_apply" && (
                       <button
                         onClick={() => withBusy(patch.id, () => rejectPatchApply(selectedProject.id, patch.id))}

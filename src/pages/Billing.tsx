@@ -16,18 +16,6 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // "Connected accounts" (per the user's explicit request that the
-  // password-registered account should stay the one and only account, with
-  // GitHub/Google as optional add-ons rather than alternate sign-in
-  // identities that silently take over the session). This deliberately
-  // reuses the exact same `getGitHubSignInUrl()`/`getGoogleSignInUrl()`
-  // hrefs the Login/Register pages use — no new backend route needed.
-  // `oauthGithub.ts`/`oauthGoogle.ts` already resolve the current session
-  // (via `resolveCurrentUserId`) before deciding whether to sign in as a
-  // different user or link the identity onto the one already logged in; a
-  // logged-in user clicking these now *links*, not switches. See those
-  // files' account-linking doc comments for the fix this section depends
-  // on.
   const { user, refresh: refreshAuth } = useAuth();
   const [oauthProviders, setOauthProviders] = useState({ google: false, github: false });
 
@@ -37,18 +25,11 @@ export default function BillingPage() {
       .catch(() => setOauthProviders({ google: false, github: false }));
   }, []);
 
-  // After bouncing back from a provider's OAuth callback, `user` (and its
-  // githubConnected/driveConnected flags) needs a fresh `/auth/me` read —
-  // the AuthProvider only fetches it once on mount, before the redirect.
   useEffect(() => {
     refreshAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
-  // A local-only preference (this browser's localStorage — see
-  // lib/settings.ts), not billing-related, but this "Settings" page is
-  // the only settings screen the app has, so it lives here rather than a
-  // brand-new page for a single toggle.
   const [autoScan, setAutoScan] = useState(() => getAutoScanOnRegister());
 
   function handleAutoScanChange(value: boolean) {
@@ -59,18 +40,6 @@ export default function BillingPage() {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  // Bug fix: clicking "Upgrade to Pro" navigates the whole browser tab away
-  // to Dodo's hosted checkout via `window.location.href` — this component
-  // never unmounts cleanly for that, it just gets frozen mid-"Redirecting…"
-  // with checkoutBusy stuck true. If the user then hits the browser Back
-  // button before finishing checkout, the browser restores this exact page
-  // (often straight from bfcache, without re-running any mount effects) —
-  // so without this listener, "Redirecting to checkout…" stays stuck
-  // showing forever until a manual hard refresh. `pageshow` fires both on
-  // a bfcache restore (`event.persisted === true`) and on a normal
-  // (re)load, so resetting unconditionally here covers both — coming back
-  // to this page should never show a spinner for a checkout that isn't
-  // actually in flight anymore.
   useEffect(() => {
     function handlePageShow() {
       setCheckoutBusy(false);
@@ -94,11 +63,7 @@ export default function BillingPage() {
     setCheckoutError(null);
     setCheckoutBusy(true);
     try {
-      // Dodo Payments' checkout is a real hosted page — no client-side
-      // payment widget/script to load, unlike the earlier Razorpay
-      // integration. The browser is simply redirected there, then back
-      // to this same page (return_url, server-side default "/settings")
-      // once payment succeeds or fails.
+
       const session = await createBillingCheckout();
       window.location.href = session.checkoutUrl;
     } catch (err) {
@@ -166,17 +131,7 @@ export default function BillingPage() {
                     <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
                       Connected
                     </span>
-                    {/*
-                      Re-hitting the same OAuth start URL while already
-                      signed in is safe — the backend recognizes the
-                      already-linked identity and updates its stored
-                      token in place (see oauthGithub.ts's callback);
-                      it never creates a duplicate account or switches
-                      you to a different one. Exposed here so a stale/
-                      revoked token (e.g. a 401 from GitHub when
-                      browsing repos) can be fixed with one click,
-                      without a full sign-out/sign-in.
-                    */}
+                    {}
                     <a
                       href={getGitHubSignInUrl()}
                       title="Re-authorize if repo browsing is failing (e.g. a 401 error) — this refreshes the stored token without switching accounts."
@@ -208,7 +163,7 @@ export default function BillingPage() {
                     <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
                       Connected
                     </span>
-                    {/* Same reasoning as GitHub's Reconnect link above — see oauthGoogle.ts's callback. */}
+                    {}
                     <a
                       href={getGoogleSignInUrl()}
                       title="Re-authorize if Drive browsing is failing (e.g. a 403 error) — this refreshes the stored token without switching accounts."

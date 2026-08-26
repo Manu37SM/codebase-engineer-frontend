@@ -95,8 +95,7 @@ describe("DashboardPage", () => {
     mockedApi.importProject.mockReset();
     mockedApi.discoverProject.mockReset();
     mockedApi.indexProject.mockReset();
-    // Pre-agree to RegisterProjectForm's one-time disclosure dialog — its
-    // own gating behavior is covered by RegisterProjectForm.test.tsx.
+
     window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
     mockedApi.runProjectAnalysis.mockReset().mockResolvedValue({
       run: { id: "r0", project_id: "p0", started_at: "now", finished_at: "now", status: "completed", findings_count: 0, critical_count: 0, high_count: 0, medium_count: 0, low_count: 0 },
@@ -141,9 +140,7 @@ describe("DashboardPage", () => {
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => expect(mockedApi.deleteProject).toHaveBeenCalledWith("p1"));
-    // With the last repository gone, the workspace falls back to the
-    // "register one" onboarding state — proving the removal actually took
-    // effect and the picker's local state didn't get stuck.
+
     expect(await screen.findByText(/Welcome to Codebase Engineer/)).toBeInTheDocument();
   });
 
@@ -176,8 +173,7 @@ describe("DashboardPage", () => {
 
     await waitFor(() => expect(mockedApi.discoverProject).toHaveBeenCalledWith("p1"));
     expect(mockedApi.indexProject).toHaveBeenCalledWith("p1");
-    // Scan also runs the deterministic analysis that produces findings —
-    // no separate "Run Analysis" click needed to see results.
+
     expect(mockedApi.runProjectAnalysis).toHaveBeenCalledWith("p1");
   });
 
@@ -204,34 +200,17 @@ describe("DashboardPage", () => {
 
     renderPage();
 
-    // Asserted inside a single `waitFor` rather than one `findByText` up
-    // front followed by synchronous `getByText`s: the initial data load
-    // resolves two independent promise chains a render apart (the fetch's
-    // `.then` that sets `snapshot`/`fileTotals`, then a separate `.finally`
-    // microtask that flips `loading` false), and this page also depends on
-    // `ProjectContext`'s own async project-list load completing first. A
-    // single `findByText("my-app")` only guarantees *a* render containing
-    // that text happened at some point — not that the render RTL happened
-    // to observe was the final, fully-settled one. On a slower or
-    // differently-scheduled event loop (seen in practice on Windows) the
-    // synchronous follow-up assertions could run against a DOM snapshot
-    // that had already moved on. Polling the whole assertion group together
-    // removes that race: it only succeeds once every field is present
-    // simultaneously, in the same commit.
     await waitFor(() => {
       expect(screen.getByText("my-app")).toBeInTheDocument();
       expect(screen.getByText("main")).toBeInTheDocument();
       expect(screen.getByText("clean")).toBeInTheDocument();
       expect(screen.getByText("TypeScript")).toBeInTheDocument();
       expect(screen.getByText("React")).toBeInTheDocument();
-      expect(screen.getByText("10")).toBeInTheDocument(); // total files stat tile
-      expect(screen.getByText("2")).toBeInTheDocument(); // test files stat tile
+      expect(screen.getByText("10")).toBeInTheDocument(); 
+      expect(screen.getByText("2")).toBeInTheDocument(); 
     });
   });
 
-  // User request: instead of a small separate dropdown next to the
-  // project name, the project name/path header itself doubles as the
-  // repository switcher when more than one project is registered.
   it("lets the user switch repositories by using the header itself as the dropdown, with no separate switcher control", async () => {
     const PROJECT_2 = { id: "p2", name: "other-app", root_path: "/tmp/other-app", created_at: "now", apply_mode: "direct" };
     mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT, PROJECT_2] });
@@ -257,7 +236,7 @@ describe("DashboardPage", () => {
     const switcher = await screen.findByRole("combobox", { name: "Switch repository" });
     expect(switcher).toHaveValue("p1");
     expect(within(switcher).getByRole("option", { name: "other-app" })).toBeInTheDocument();
-    // The old separate corner dropdown is gone — the header select is the only one.
+
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
 
     await userEvent.selectOptions(switcher, "p2");
@@ -338,7 +317,7 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("git not installed")).toBeInTheDocument();
     });
-    // The rest of the dashboard still rendered despite the Git failure.
+
     expect(screen.getByText("my-app")).toBeInTheDocument();
     expect(screen.getByText("TypeScript")).toBeInTheDocument();
   });
@@ -409,10 +388,10 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Findings by severity")).toBeInTheDocument();
     });
-    // Severity legend from SeverityBreakdownChart.
+
     expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getByText("Findings trend")).toBeInTheDocument();
-    // No "no completed runs" / "no snapshot" fallback text — real chart data was used.
+
     expect(screen.queryByText(/No completed analysis runs yet/)).not.toBeInTheDocument();
     expect(screen.queryByText(/No runs with a recorded severity snapshot/)).not.toBeInTheDocument();
   });

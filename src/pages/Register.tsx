@@ -6,12 +6,6 @@ import Turnstile from "../components/Turnstile";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
 
-/**
- * Task #91. Registering the FIRST account on a fresh, open-mode install
- * is what turns auth on for the whole instance (see docs/AUTH.md §1) — so
- * this page is reachable even when `authRequired` is currently false, not
- * just as a "create an additional account" flow.
- */
 export default function RegisterPage() {
   const { refresh } = useAuth();
   const navigate = useNavigate();

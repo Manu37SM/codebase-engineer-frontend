@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import ActivityIndicator from "../components/ActivityIndicator";
@@ -34,10 +34,9 @@ export default function TestsPage() {
   const [hasEnabledProvider, setHasEnabledProvider] = useState(false);
   const [diagnosisOpen, setDiagnosisOpen] = useState(false);
   const [diagnoses, setDiagnoses] = useState<Record<string, FailureDiagnosisData>>({});
-  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
-  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
-  // Per-user request: delete a single run from the history, and a Pro-only
-  // "Delete all" for the whole history at once.
+  const [diagnosisLoading, setDiagnosisLoading] = useState<Record<string, boolean>>({});
+  const [diagnosisError, setDiagnosisError] = useState<Record<string, string>>({});
+
   const [confirmDeleteRunId, setConfirmDeleteRunId] = useState<string | null>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [tier, setTier] = useState<"free" | "pro" | null>(null);
@@ -53,25 +52,43 @@ export default function TestsPage() {
       .catch(() => setTier(null));
   }, []);
 
+  // Guards against a stale response overwriting newer state if the user
+  // switches projects while a request is still in flight (see the same
+  // fix in Findings.tsx).
+  const loadRequestId = useRef(0);
+
   function loadHistory() {
     if (!selectedProject) return;
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     setError(null);
     listTestRuns(selectedProject.id)
       .then((res) => {
+        if (requestId !== loadRequestId.current) return;
         setRuns(res.runs);
         if (res.runs.length > 0) {
-          // The list endpoint omits stdout/stderr (kept light); fetch the
-          // full record for the most recent run so its output can be shown.
+
           getTestRun(selectedProject.id, res.runs[0].id)
-            .then((full) => setSelectedRun(full.run))
-            .catch(() => setSelectedRun(res.runs[0]));
+            .then((full) => {
+              if (requestId !== loadRequestId.current) return;
+              setSelectedRun(full.run);
+            })
+            .catch(() => {
+              if (requestId !== loadRequestId.current) return;
+              setSelectedRun(res.runs[0]);
+            });
         } else {
           setSelectedRun(null);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load test runs"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (requestId !== loadRequestId.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load test runs");
+      })
+      .finally(() => {
+        if (requestId !== loadRequestId.current) return;
+        setLoading(false);
+      });
   }
 
   useEffect(loadHistory, [selectedProject]);
@@ -82,7 +99,7 @@ export default function TestsPage() {
     setError(null);
     setShowOutput(false);
     setDiagnosisOpen(false);
-    setDiagnosisError(null);
+    setDiagnosisError({});
     try {
       await runProjectTests(selectedProject.id);
       loadHistory();
@@ -97,7 +114,7 @@ export default function TestsPage() {
     if (!selectedProject) return;
     setShowOutput(false);
     setDiagnosisOpen(false);
-    setDiagnosisError(null);
+    setDiagnosisError({});
     try {
       const full = await getTestRun(selectedProject.id, run.id);
       setSelectedRun(full.run);
@@ -138,37 +155,39 @@ export default function TestsPage() {
 
   async function toggleDiagnosis() {
     if (!selectedProject || !selectedRun) return;
+    const runId = selectedRun.id;
     if (diagnosisOpen) {
       setDiagnosisOpen(false);
       return;
     }
     setDiagnosisOpen(true);
-    setDiagnosisError(null);
-    if (diagnoses[selectedRun.id]) return;
-    setDiagnosisLoading(true);
+    setDiagnosisError((prev) => { const next = { ...prev }; delete next[runId]; return next; });
+    if (diagnoses[runId]) return;
+    setDiagnosisLoading((prev) => ({ ...prev, [runId]: true }));
     try {
-      const stored = await getTestFailureDiagnosis(selectedProject.id, selectedRun.id);
+      const stored = await getTestFailureDiagnosis(selectedProject.id, runId);
       if (stored.diagnosis) {
-        setDiagnoses((prev) => ({ ...prev, [selectedRun.id]: stored.diagnosis! }));
+        setDiagnoses((prev) => ({ ...prev, [runId]: stored.diagnosis! }));
       }
     } catch (err) {
-      setDiagnosisError(err instanceof Error ? err.message : "Failed to load AI failure diagnosis.");
+      setDiagnosisError((prev) => ({ ...prev, [runId]: err instanceof Error ? err.message : "Failed to load AI failure diagnosis." }));
     } finally {
-      setDiagnosisLoading(false);
+      setDiagnosisLoading((prev) => ({ ...prev, [runId]: false }));
     }
   }
 
   async function generateDiagnosis() {
     if (!selectedProject || !selectedRun) return;
-    setDiagnosisError(null);
-    setDiagnosisLoading(true);
+    const runId = selectedRun.id;
+    setDiagnosisError((prev) => { const next = { ...prev }; delete next[runId]; return next; });
+    setDiagnosisLoading((prev) => ({ ...prev, [runId]: true }));
     try {
-      const result = await diagnoseTestFailure(selectedProject.id, selectedRun.id);
-      setDiagnoses((prev) => ({ ...prev, [selectedRun.id]: result.diagnosis }));
+      const result = await diagnoseTestFailure(selectedProject.id, runId);
+      setDiagnoses((prev) => ({ ...prev, [runId]: result.diagnosis }));
     } catch (err) {
-      setDiagnosisError(err instanceof Error ? err.message : "Failed to generate AI failure diagnosis.");
+      setDiagnosisError((prev) => ({ ...prev, [runId]: err instanceof Error ? err.message : "Failed to generate AI failure diagnosis." }));
     } finally {
-      setDiagnosisLoading(false);
+      setDiagnosisLoading((prev) => ({ ...prev, [runId]: false }));
     }
   }
 
@@ -327,12 +346,14 @@ export default function TestsPage() {
 
               {diagnosisOpen && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {diagnosisLoading && <p className="text-slate-500">Loading…</p>}
-                  {diagnosisError && !diagnosisLoading && <p className="text-red-600">{diagnosisError}</p>}
-                  {!diagnosisLoading && diagnoses[selectedRun.id] && (
+                  {diagnosisLoading[selectedRun.id] && <p className="text-slate-500">Loading…</p>}
+                  {diagnosisError[selectedRun.id] && !diagnosisLoading[selectedRun.id] && (
+                    <p className="text-red-600">{diagnosisError[selectedRun.id]}</p>
+                  )}
+                  {!diagnosisLoading[selectedRun.id] && diagnoses[selectedRun.id] && (
                     <FailureDiagnosisView diagnosis={diagnoses[selectedRun.id]} />
                   )}
-                  {!diagnosisLoading && !diagnoses[selectedRun.id] && !diagnosisError && (
+                  {!diagnosisLoading[selectedRun.id] && !diagnoses[selectedRun.id] && !diagnosisError[selectedRun.id] && (
                     <div>
                       <p className="text-slate-500">No AI diagnosis generated yet.</p>
                       <button
@@ -425,16 +446,6 @@ export default function TestsPage() {
   );
 }
 
-/**
- * Renders a Phase 20 failure diagnosis, mirroring Findings.tsx's
- * `RootCauseView` — likely cause as prose, evidence as a bulleted list,
- * suggested direction as prose. Any field the model's response didn't
- * clearly contain is shown as "Not reported" rather than hidden or
- * guessed. Deliberately does not render a diff or code — this workflow
- * is read-only diagnosis, not patch generation; the existing fix-plan /
- * patch flow on the Findings page is the human-approval-gated path for
- * an actual change.
- */
 function FailureDiagnosisView({ diagnosis }: { diagnosis: FailureDiagnosisData }) {
   return (
     <div>

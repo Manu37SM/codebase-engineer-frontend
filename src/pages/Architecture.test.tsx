@@ -76,7 +76,7 @@ describe("ArchitecturePage", () => {
 
     expect(await screen.findByText("src/a")).toBeInTheDocument();
     expect(screen.getByText("src/b")).toBeInTheDocument();
-    expect(screen.getByText("src/b (2)")).toBeInTheDocument(); // src/a's "Depends on" cell
+    expect(screen.getByText("src/b (2)")).toBeInTheDocument(); 
     const externalSection = screen.getByText("External dependencies").closest("div")!;
     expect(within(externalSection).getByText("react")).toBeInTheDocument();
     expect(within(externalSection).getByText("3")).toBeInTheDocument();

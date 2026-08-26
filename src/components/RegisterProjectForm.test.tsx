@@ -61,17 +61,10 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     mockedApi.listDriveZipFiles.mockReset();
     mockedApi.importDriveZipFile.mockReset();
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
-    // Pre-agree to the one-time "Before you register a repository"
-    // disclosure so the existing import-behavior tests below don't have
-    // to click through it — that flow gets its own dedicated tests further
-    // down, with a real empty localStorage.
+
     window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
   });
 
-  // User request: hide the "Zip URL" tab (unreliable in practice — see
-  // zipUrl.ts's own doc comments on Drive/OneDrive share links) without
-  // removing the underlying feature. Git URL is the next tab over, so it
-  // becomes the new default.
   it("defaults to Git URL mode, now that Zip URL is hidden", async () => {
     renderForm();
     expect(await screen.findByLabelText("Git URL")).toBeInTheDocument();
@@ -173,9 +166,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
   it("GitHub mode: suggests re-authorizing via sign-out/sign-in if the repo list takes too long — user report of a stuck \"Loading your repositories…\" spinner", async () => {
     mockedApi.getCurrentUser.mockResolvedValue({ authRequired: true, user: CONNECTED_USER });
-    // Simulates the real bug: a hung outbound request that never resolves
-    // (now also fixed server-side with a fetch timeout, but this is the
-    // client-side safety net for whatever residual delay remains).
+
     mockedApi.listGitHubRepos.mockReturnValue(new Promise(() => {}));
 
     render(
@@ -184,8 +175,6 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
       </AuthProvider>
     );
 
-    // Real timers for the initial async auth/user load, so RTL's own
-    // polling (which itself uses setTimeout) isn't fighting fake ones.
     const githubButton = await screen.findByRole("button", { name: "GitHub" });
 
     vi.useFakeTimers();
@@ -272,11 +261,11 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Google Drive" }));
     const select = await screen.findByLabelText("Zip file");
-    expect(select.querySelectorAll("option")).toHaveLength(3); // placeholder + 2 files
+    expect(select.querySelectorAll("option")).toHaveLength(3); 
 
     await user.type(await screen.findByLabelText("Filter files"), "old");
 
-    expect(select.querySelectorAll("option")).toHaveLength(2); // placeholder + 1 matching file
+    expect(select.querySelectorAll("option")).toHaveLength(2); 
     expect(screen.getByRole("option", { name: "old-project.zip" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "my-app.zip" })).not.toBeInTheDocument();
   });
@@ -297,8 +286,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
 
   describe("first-time disclosure dialog (\"Before you register a repository\") — user request: gate Register & continue once, on every tab", () => {
     beforeEach(() => {
-      // Undo the outer beforeEach's pre-agreement for this block only, so
-      // these tests see the dialog exactly as a first-time user would.
+
       window.localStorage.removeItem("codebase-engineer.registerDisclosureAgreed");
     });
 
@@ -351,7 +339,7 @@ describe("RegisterProjectForm (Task #85 — git/zip URL modes; Task #84 — GitH
       await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo-one.git");
       await user.click(screen.getByRole("button", { name: "Register & continue" }));
       await user.click(await screen.findByRole("button", { name: "Agree and continue" }));
-      await screen.findByText("Register & continue"); // form re-rendered after reset()
+      await screen.findByText("Register & continue"); 
 
       await user.type(screen.getByLabelText("Name"), "repo-two");
       await user.type(screen.getByLabelText("Git URL"), "https://github.com/user/repo-two.git");

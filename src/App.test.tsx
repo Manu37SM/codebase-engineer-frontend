@@ -66,7 +66,7 @@ describe("App shell", () => {
     renderApp("/");
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    // The real app pages never rendered — no navigation, no workspace content.
+
     expect(screen.queryByRole("navigation", { name: "Primary" })).not.toBeInTheDocument();
   });
 

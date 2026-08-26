@@ -2,28 +2,18 @@ import { useState } from "react";
 import { ApiError, type BulkFixResult } from "../lib/api";
 
 interface BulkAiFixButtonProps {
-  /** Only ever rendered by the caller when the current tier is "pro" — kept as a prop rather than fetched here so both Findings and Changes share one billing-status fetch. */
+
   label: string;
-  /** e.g. "23 findings" / "2 pending patches" — shown in the confirm step. */
+
   itemDescription: string;
   disabled?: boolean;
   onRun: () => Promise<BulkFixResult>;
-  /** Called once the summary is dismissed via "Review changes now" — lets the caller refresh its list / navigate. */
+
   onDone: () => void;
 }
 
 type Step = "idle" | "confirm" | "running" | "summary" | "error";
 
-/**
- * Shared UI for both Pro-tier bulk-fix actions this session added at the
- * user's explicit request: Findings' "Fix all findings" and Changes'
- * "Approve & generate all". Same shape for both, per the user's own
- * instruction that Changes' version "must be same as findings" —
- * pre-flight confirm, run, then a summary showing the real AI token usage
- * that was actually spent (never a fabricated pre-run estimate — this app
- * only knows real usage after a call completes) with a Confirm button to
- * proceed to reviewing the results.
- */
 export default function BulkAiFixButton({
   label,
   itemDescription,

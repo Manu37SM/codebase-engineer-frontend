@@ -55,9 +55,7 @@ describe("api client", () => {
   });
 
   it("prefers the server's `message` over the generic `error` reason phrase", async () => {
-    // Mirrors Fastify's own framework-level error shape (as opposed to
-    // this app's own routes, which only ever set `error`) —
-    // {statusCode, error: "Bad Request", message: "<specific detail>"}.
+
     const fetchMock = mockFetchOnce(
       { statusCode: 400, error: "Bad Request", message: "Body cannot be empty when content-type is set to 'application/json'" },
       400
@@ -70,11 +68,7 @@ describe("api client", () => {
   });
 
   it("does not send a Content-Type header on a bodyless GET request", async () => {
-    // Regression test: sending Content-Type: application/json on a
-    // bodyless request can end up paired with a zero-length body once it
-    // passes through some proxy layers, which Fastify's default JSON
-    // parser rejects with a 400 (FST_ERR_CTP_EMPTY_JSON_BODY) — a real
-    // bug this app hit in practice. See request()'s comment in api.ts.
+
     const fetchMock = mockFetchOnce({ projects: [] });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 

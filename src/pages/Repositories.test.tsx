@@ -52,9 +52,7 @@ describe("RepositoriesPage", () => {
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [] });
     mockedApi.importProject.mockReset();
-    // Registering (via the auto-scan setting, on by default) triggers a
-    // discover+index right after — give these harmless defaults so tests
-    // that don't care about scanning aren't tripped up by it.
+
     mockedApi.discoverProject.mockReset().mockResolvedValue({});
     mockedApi.indexProject.mockReset().mockResolvedValue({
       totalFiles: 0,
@@ -70,10 +68,7 @@ describe("RepositoriesPage", () => {
     mockedApi.detectSubProjects.mockReset();
     mockedApi.registerSubProject.mockReset();
     window.localStorage.clear();
-    // Pre-agree to RegisterProjectForm's one-time disclosure dialog (must
-    // come after the clear() above) — its own gating behavior is covered
-    // by RegisterProjectForm.test.tsx; these tests are about the
-    // Repositories page around it.
+
     window.localStorage.setItem("codebase-engineer.registerDisclosureAgreed", "1");
   });
 
@@ -84,10 +79,7 @@ describe("RepositoriesPage", () => {
 
   it("registers a new repository (via Git URL, the default tab) and lists it", async () => {
     mockedApi.listProjects.mockResolvedValueOnce({ projects: [] }).mockResolvedValue({
-      // Not "Once" — handleRegistered's auto-scan (on by default) refreshes
-      // the project list an extra time after registering, so this needs to
-      // keep answering with the registered project for every call after
-      // the first (empty) one, not just a single follow-up call.
+
       projects: [{ id: "p1", name: "my-app", root_path: "/data/my-app", created_at: "now", apply_mode: "download" }],
     });
     mockedApi.importProject.mockResolvedValue({

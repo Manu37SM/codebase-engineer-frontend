@@ -808,7 +808,7 @@ describe("FindingsPage", () => {
     expect(mockedApi.selfReviewPatch).toHaveBeenCalledWith("p1", "patch1");
     expect(await screen.findByText("fixes the finding.")).toBeInTheDocument();
     expect(screen.getByText("a test should be added.")).toBeInTheDocument();
-    // Self-review never touches the patch's own status/lifecycle buttons.
+
     expect(screen.getByRole("button", { name: "Approve diff for apply" })).toBeInTheDocument();
   });
 

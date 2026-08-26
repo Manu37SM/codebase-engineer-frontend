@@ -23,28 +23,21 @@ export default function RepositoriesPage() {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [checkingRemoveId, setCheckingRemoveId] = useState<string | null>(null);
-  // Shown instead of the plain inline confirm when the project actually
-  // has AI-generated patches on it — removing a project deletes those
-  // records too (cascade), and per the user's explicit request this is
-  // called out up front, along with the fact that any free-tier AI usage
-  // already spent generating them isn't refunded.
+
   const [removeWarning, setRemoveWarning] = useState<{ projectId: string; projectName: string; patchCount: number } | null>(
     null
   );
   const [subProjectsById, setSubProjectsById] = useState<Record<string, MultiProjectDetectionResult>>({});
   const [detectingId, setDetectingId] = useState<string | null>(null);
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
-  // Shown once right after a successful registration — see
-  // components/AiProviderReminder.tsx for why this isn't a hard gate.
+
   const [showAiReminder, setShowAiReminder] = useState(false);
 
   async function handleRegistered(projectId: string) {
     await refresh();
     selectProject(projectId);
     setShowAiReminder(true);
-    // "Auto-scan after registering" (Settings) — on by default so a newly
-    // registered repo shows findings/dependencies/Git activity right away
-    // instead of requiring a separate manual "Scan" click.
+
     if (getAutoScanOnRegister()) {
       await handleDiscoverAndIndex(projectId);
     }
@@ -56,12 +49,7 @@ export default function RepositoriesPage() {
     try {
       await discoverProject(projectId);
       const summary = await indexProject(projectId);
-      // "Scan" used to only discover+index files (languages, build system,
-      // Git branch, etc.) and leave findings for a separate, easy-to-miss
-      // "Run Analysis" click on the Findings page. Running the same
-      // deterministic analysis here too means findings are ready the
-      // moment a scan finishes — Run Analysis on the Findings page still
-      // works exactly as before for a manual re-run.
+
       const analysis = await runProjectAnalysis(projectId);
       setActionMessage(
         `Scanned ${summary.totalFiles} files (${summary.testFiles} test, ${summary.generatedFiles} generated) — ${analysis.findingsCount} finding${analysis.findingsCount === 1 ? "" : "s"}.`
@@ -75,7 +63,7 @@ export default function RepositoriesPage() {
   }
 
   async function handleDetectSubProjects(projectId: string) {
-    // Toggle closed if already shown, rather than re-fetching every click.
+
     if (subProjectsById[projectId]) {
       setSubProjectsById((prev) => {
         const next = { ...prev };
@@ -128,10 +116,6 @@ export default function RepositoriesPage() {
     }
   }
 
-  // Clicking "Remove" checks for AI-generated patches first, so the
-  // stronger warning dialog only appears when there's actually something
-  // to lose — a project with nothing generated yet keeps the plain
-  // one-line inline confirm it always had.
   async function handleRemoveClick(projectId: string, projectName: string) {
     setCheckingRemoveId(projectId);
     try {
@@ -142,8 +126,7 @@ export default function RepositoriesPage() {
         setConfirmRemoveId(projectId);
       }
     } catch {
-      // Fail open — don't block removal just because the patch check
-      // itself failed; fall back to the plain confirm.
+
       setConfirmRemoveId(projectId);
     } finally {
       setCheckingRemoveId(null);
@@ -188,26 +171,7 @@ export default function RepositoriesPage() {
                     <div className="text-xs text-slate-500">{project.root_path}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/*
-                      The per-row "AI apply: Download as zip" label used to
-                      live here, but every project runs in this mode (see
-                      the removed comment's reasoning below) — repeating a
-                      static, unchangeable fact on every single row was
-                      just clutter. The same fact is now disclosed once, up
-                      front, in the "Agree and continue" dialog shown the
-                      first time someone registers a repository (see
-                      RegisterProjectForm.tsx), where it actually informs a
-                      decision instead of decorating a list.
-
-                      ("Direct to disk" used to be a selectable option
-                      here, but this instance runs on a remote server —
-                      writing an approved AI-Mode patch "directly to disk"
-                      would write it into the *server's* filesystem, not
-                      the user's own machine, which isn't useful and was
-                      confusing. Every project now runs in "download as
-                      zip" mode — createProject defaults new projects to
-                      it, migration 017 flipped existing ones.)
-                    */}
+                    {}
                     {busyProjectId === project.id && (
                       <ActivityIndicator label="Discovering & indexing files" />
                     )}

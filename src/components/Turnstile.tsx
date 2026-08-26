@@ -1,16 +1,5 @@
 import { useEffect, useRef } from "react";
 
-/**
- * Cloudflare Turnstile widget (Task #81 follow-up). Loads Cloudflare's
- * script on demand — no npm dependency, and it's a free service — and
- * renders the widget into a div ref, calling `onVerify` with the token
- * once the user (invisibly, in most cases) passes the challenge.
- *
- * Only ever mounted when the backend reports Turnstile is configured (see
- * `getAuthProviders()`) and `VITE_TURNSTILE_SITE_KEY` is set — see
- * docs/AUTH.md §4.
- */
-
 declare global {
   interface Window {
     turnstile?: {
@@ -71,10 +60,7 @@ export default function Turnstile({
         });
       })
       .catch(() => {
-        // Script failed to load (e.g. offline, or Cloudflare unreachable) —
-        // leave the widget unrendered. The backend will reject the
-        // request with a clear "missing token" error rather than the UI
-        // silently pretending verification passed.
+
       });
 
     return () => {
@@ -84,7 +70,7 @@ export default function Turnstile({
         widgetIdRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [siteKey]);
 
   return <div ref={containerRef} className="mt-1" />;

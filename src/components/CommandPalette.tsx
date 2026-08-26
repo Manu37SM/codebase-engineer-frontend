@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 
-/** Dispatch `new CustomEvent(OPEN_EVENT)` from anywhere to open the palette imperatively (e.g. a visible button). */
 export const OPEN_EVENT = "codebase-engineer:open-command-palette";
 
 interface Command {
@@ -25,23 +24,6 @@ const PAGES: { to: string; label: string }[] = [
   { to: "/settings", label: "Settings" },
 ];
 
-/**
- * A Cmd/Ctrl+K command palette (Task #77) for keyboard-driven navigation —
- * jump to any page or switch the selected repository without touching the
- * mouse. Mounted once in `NavShell` so it's always available regardless of
- * which page is showing.
- *
- * The theme-toggle command this used to include was removed (dark mode is
- * now the only mode — see ThemeContext.tsx) but the palette itself stays:
- * only that one command was cut, per explicit follow-up instruction, not
- * the whole feature.
- *
- * Deliberately simple: a case-insensitive substring filter over a small,
- * static command list (page nav + real registered projects), not a
- * fuzzy-match library — the command list here is small enough (under a few
- * dozen entries even with many repositories registered) that a substring
- * filter is both fast and predictable.
- */
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -50,10 +32,6 @@ export default function CommandPalette() {
   const navigate = useNavigate();
   const { projects, selectedProjectId, selectProject } = useProjects();
 
-  // Global open/close shortcut — Cmd+K on macOS, Ctrl+K everywhere else.
-  // Registered once for the app's lifetime (empty dep array); the handler
-  // reads `open` via the functional form of `setOpen` so it never needs to
-  // be re-registered when `open` changes.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -63,10 +41,7 @@ export default function CommandPalette() {
         setOpen(false);
       }
     }
-    // Also openable by dispatching this event — used by the visible
-    // "Search (Ctrl K)" button in `NavShell` for anyone who doesn't know
-    // (or can't use) the keyboard shortcut, without lifting `open` state
-    // out of this component.
+
     function handleOpenEvent() {
       setOpen(true);
     }
@@ -82,7 +57,7 @@ export default function CommandPalette() {
     if (open) {
       setQuery("");
       setActiveIndex(0);
-      // Focus after the modal actually mounts.
+
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);

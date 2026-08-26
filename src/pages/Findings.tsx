@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import ActivityIndicator from "../components/ActivityIndicator";
@@ -36,6 +36,7 @@ import {
   writeAndRunGeneratedTest,
 } from "../lib/api";
 import BulkAiFixButton from "../components/BulkAiFixButton";
+import { downloadFindingsCsv, downloadFindingsJson } from "../lib/exportFindings";
 import type {
   ContextBundle,
   FindingRecord,
@@ -70,40 +71,40 @@ export default function FindingsPage() {
   const [running, setRunning] = useState(false);
   const [contextOpenFor, setContextOpenFor] = useState<string | null>(null);
   const [contextBundles, setContextBundles] = useState<Record<string, ContextBundle>>({});
-  const [contextLoading, setContextLoading] = useState<string | null>(null);
-  const [contextError, setContextError] = useState<string | null>(null);
+  const [contextLoading, setContextLoading] = useState<Record<string, boolean>>({});
+  const [contextError, setContextError] = useState<Record<string, string>>({});
 
   const [hasEnabledProvider, setHasEnabledProvider] = useState(false);
   const [explainOpenFor, setExplainOpenFor] = useState<string | null>(null);
   const [explanations, setExplanations] = useState<Record<string, StoredExplanation>>({});
-  const [explainLoading, setExplainLoading] = useState<string | null>(null);
-  const [explainError, setExplainError] = useState<string | null>(null);
+  const [explainLoading, setExplainLoading] = useState<Record<string, boolean>>({});
+  const [explainError, setExplainError] = useState<Record<string, string>>({});
 
   const [rootCauseOpenFor, setRootCauseOpenFor] = useState<string | null>(null);
   const [rootCauses, setRootCauses] = useState<Record<string, StoredRootCauseAnalysis>>({});
-  const [rootCauseLoading, setRootCauseLoading] = useState<string | null>(null);
-  const [rootCauseError, setRootCauseError] = useState<string | null>(null);
+  const [rootCauseLoading, setRootCauseLoading] = useState<Record<string, boolean>>({});
+  const [rootCauseError, setRootCauseError] = useState<Record<string, string>>({});
 
   const [fixPlanOpenFor, setFixPlanOpenFor] = useState<string | null>(null);
   const [fixPlans, setFixPlans] = useState<Record<string, StoredFixPlan>>({});
-  const [fixPlanLoading, setFixPlanLoading] = useState<string | null>(null);
-  const [fixPlanError, setFixPlanError] = useState<string | null>(null);
+  const [fixPlanLoading, setFixPlanLoading] = useState<Record<string, boolean>>({});
+  const [fixPlanError, setFixPlanError] = useState<Record<string, string>>({});
 
   const [patchesOpenFor, setPatchesOpenFor] = useState<string | null>(null);
   const [patches, setPatches] = useState<Record<string, PatchRecord[]>>({});
-  const [patchesLoading, setPatchesLoading] = useState<string | null>(null);
-  const [patchesError, setPatchesError] = useState<string | null>(null);
+  const [patchesLoading, setPatchesLoading] = useState<Record<string, boolean>>({});
+  const [patchesError, setPatchesError] = useState<Record<string, string>>({});
   const [patchActionBusy, setPatchActionBusy] = useState<string | null>(null);
 
   const [selfReviewOpenFor, setSelfReviewOpenFor] = useState<string | null>(null);
   const [selfReviews, setSelfReviews] = useState<Record<string, SelfReviewData>>({});
-  const [selfReviewLoading, setSelfReviewLoading] = useState<string | null>(null);
-  const [selfReviewError, setSelfReviewError] = useState<string | null>(null);
+  const [selfReviewLoading, setSelfReviewLoading] = useState<Record<string, boolean>>({});
+  const [selfReviewError, setSelfReviewError] = useState<Record<string, string>>({});
 
   const [generatedTestsOpenFor, setGeneratedTestsOpenFor] = useState<string | null>(null);
   const [generatedTests, setGeneratedTests] = useState<Record<string, GeneratedTestRecord[]>>({});
-  const [generatedTestsLoading, setGeneratedTestsLoading] = useState<string | null>(null);
-  const [generatedTestsError, setGeneratedTestsError] = useState<string | null>(null);
+  const [generatedTestsLoading, setGeneratedTestsLoading] = useState<Record<string, boolean>>({});
+  const [generatedTestsError, setGeneratedTestsError] = useState<Record<string, string>>({});
   const [generatedTestActionBusy, setGeneratedTestActionBusy] = useState<string | null>(null);
 
   useEffect(() => {
@@ -112,19 +113,55 @@ export default function FindingsPage() {
       .catch(() => setHasEnabledProvider(false));
   }, []);
 
-  // "Fix all findings" (per the user's explicit request) is Pro-tier only —
-  // fetched the same way Billing.tsx already reads tier, just to decide
-  // whether to render the button at all (the server enforces the real
-  // gate regardless of what this client shows).
   const [tier, setTier] = useState<"free" | "pro" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    function handleOutsideClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [exportMenuOpen]);
+  const [copiedFindingId, setCopiedFindingId] = useState<string | null>(null);
   useEffect(() => {
     getBillingStatus()
       .then((res) => setTier(res.tier))
       .catch(() => setTier(null));
   }, []);
 
+  function copyFinding(finding: FindingRecord) {
+    const location = finding.file_path
+      ? `${finding.file_path}${finding.line_start ? `:${finding.line_start}` : ""}`
+      : "(no file)";
+    const lines = [`[${finding.severity.toUpperCase()}] ${finding.category} — ${location}`];
+    if (finding.evidence) lines.push(finding.evidence);
+    if (finding.recommendation) lines.push(`Recommendation: ${finding.recommendation}`);
+    const text = lines.join("\n");
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedFindingId(finding.id);
+        setTimeout(() => setCopiedFindingId((current) => (current === finding.id ? null : current)), 1500);
+      })
+      .catch(() => {
+
+      });
+  }
+
+  // Guards against a stale response overwriting newer state — e.g. the
+  // user switches project A -> B (or changes filters) while A's request is
+  // still in flight; if A's response resolves after B's request has
+  // started, it must not clobber B's already-rendered findings with A's.
+  const loadRequestId = useRef(0);
+
   function load() {
     if (!selectedProject) return;
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     setError(null);
     listFindings(selectedProject.id, {
@@ -132,12 +169,19 @@ export default function FindingsPage() {
       category: category || undefined,
     })
       .then((res) => {
+        if (requestId !== loadRequestId.current) return;
         setFindings(res.findings);
         setTotal(res.total);
         setHasRun(res.latestRun !== null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load findings"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (requestId !== loadRequestId.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load findings");
+      })
+      .finally(() => {
+        if (requestId !== loadRequestId.current) return;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [selectedProject, severity, category]);
@@ -162,16 +206,16 @@ export default function FindingsPage() {
       return;
     }
     setContextOpenFor(findingId);
-    setContextError(null);
+    setContextError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     if (contextBundles[findingId] || !selectedProject) return;
-    setContextLoading(findingId);
+    setContextLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const bundle = await getFindingContext(selectedProject.id, findingId);
       setContextBundles((prev) => ({ ...prev, [findingId]: bundle }));
     } catch (err) {
-      setContextError(err instanceof Error ? err.message : "Failed to load AI context preview.");
+      setContextError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load AI context preview." }));
     } finally {
-      setContextLoading(null);
+      setContextLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
@@ -181,23 +225,23 @@ export default function FindingsPage() {
       return;
     }
     setExplainOpenFor(findingId);
-    setExplainError(null);
+    setExplainError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     if (explanations[findingId] || !selectedProject) return;
-    setExplainLoading(findingId);
+    setExplainLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const stored = await getFindingExplanation(selectedProject.id, findingId);
       setExplanations((prev) => ({ ...prev, [findingId]: stored }));
     } catch (err) {
-      setExplainError(err instanceof Error ? err.message : "Failed to load AI explanation.");
+      setExplainError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load AI explanation." }));
     } finally {
-      setExplainLoading(null);
+      setExplainLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
   async function generateExplanation(findingId: string) {
     if (!selectedProject) return;
-    setExplainError(null);
-    setExplainLoading(findingId);
+    setExplainError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
+    setExplainLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const result = await explainFinding(selectedProject.id, findingId);
       setExplanations((prev) => ({
@@ -205,9 +249,9 @@ export default function FindingsPage() {
         [findingId]: { explanation: result.explanation, provider: result.provider, model: result.model },
       }));
     } catch (err) {
-      setExplainError(err instanceof Error ? err.message : "Failed to generate AI explanation.");
+      setExplainError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to generate AI explanation." }));
     } finally {
-      setExplainLoading(null);
+      setExplainLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
@@ -217,23 +261,23 @@ export default function FindingsPage() {
       return;
     }
     setRootCauseOpenFor(findingId);
-    setRootCauseError(null);
+    setRootCauseError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     if (rootCauses[findingId] || !selectedProject) return;
-    setRootCauseLoading(findingId);
+    setRootCauseLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const stored = await getFindingRootCause(selectedProject.id, findingId);
       setRootCauses((prev) => ({ ...prev, [findingId]: stored }));
     } catch (err) {
-      setRootCauseError(err instanceof Error ? err.message : "Failed to load AI root-cause analysis.");
+      setRootCauseError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load AI root-cause analysis." }));
     } finally {
-      setRootCauseLoading(null);
+      setRootCauseLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
   async function generateRootCause(findingId: string) {
     if (!selectedProject) return;
-    setRootCauseError(null);
-    setRootCauseLoading(findingId);
+    setRootCauseError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
+    setRootCauseLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const result = await analyzeRootCause(selectedProject.id, findingId);
       setRootCauses((prev) => ({
@@ -241,9 +285,9 @@ export default function FindingsPage() {
         [findingId]: { analysis: result.analysis, provider: result.provider, model: result.model },
       }));
     } catch (err) {
-      setRootCauseError(err instanceof Error ? err.message : "Failed to generate AI root-cause analysis.");
+      setRootCauseError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to generate AI root-cause analysis." }));
     } finally {
-      setRootCauseLoading(null);
+      setRootCauseLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
@@ -253,23 +297,23 @@ export default function FindingsPage() {
       return;
     }
     setFixPlanOpenFor(findingId);
-    setFixPlanError(null);
+    setFixPlanError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     if (fixPlans[findingId] || !selectedProject) return;
-    setFixPlanLoading(findingId);
+    setFixPlanLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const stored = await getFindingFixPlan(selectedProject.id, findingId);
       setFixPlans((prev) => ({ ...prev, [findingId]: stored }));
     } catch (err) {
-      setFixPlanError(err instanceof Error ? err.message : "Failed to load AI fix plan.");
+      setFixPlanError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load AI fix plan." }));
     } finally {
-      setFixPlanLoading(null);
+      setFixPlanLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
   async function generateFixPlan(findingId: string) {
     if (!selectedProject) return;
-    setFixPlanError(null);
-    setFixPlanLoading(findingId);
+    setFixPlanError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
+    setFixPlanLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const result = await planFix(selectedProject.id, findingId);
       setFixPlans((prev) => ({
@@ -277,9 +321,9 @@ export default function FindingsPage() {
         [findingId]: { plan: result.plan, provider: result.provider, model: result.model },
       }));
     } catch (err) {
-      setFixPlanError(err instanceof Error ? err.message : "Failed to generate AI fix plan.");
+      setFixPlanError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to generate AI fix plan." }));
     } finally {
-      setFixPlanLoading(null);
+      setFixPlanLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
@@ -289,32 +333,32 @@ export default function FindingsPage() {
       return;
     }
     setPatchesOpenFor(findingId);
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     await loadPatches(findingId);
   }
 
   async function loadPatches(findingId: string) {
     if (!selectedProject) return;
-    setPatchesLoading(findingId);
+    setPatchesLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const res = await listFindingPatches(selectedProject.id, findingId);
       setPatches((prev) => ({ ...prev, [findingId]: res.patches }));
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to load patches.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load patches." }));
     } finally {
-      setPatchesLoading(null);
+      setPatchesLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
   async function handleCreatePatch(findingId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`create:${findingId}`);
     try {
       await createPatch(selectedProject.id, findingId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to create patch.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to create patch." }));
     } finally {
       setPatchActionBusy(null);
     }
@@ -322,13 +366,13 @@ export default function FindingsPage() {
 
   async function handleApprovePatch(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`approve:${patchId}`);
     try {
       await approvePatch(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to approve patch.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to approve patch." }));
     } finally {
       setPatchActionBusy(null);
     }
@@ -336,13 +380,13 @@ export default function FindingsPage() {
 
   async function handleRejectPatch(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`reject:${patchId}`);
     try {
       await rejectPatch(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to reject patch.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to reject patch." }));
     } finally {
       setPatchActionBusy(null);
     }
@@ -350,30 +394,27 @@ export default function FindingsPage() {
 
   async function handleGeneratePatch(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`generate:${patchId}`);
     try {
       await generatePatch(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to generate patch.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to generate patch." }));
     } finally {
       setPatchActionBusy(null);
     }
   }
 
-  // Phase 18's second human-approval gate: reviewing and approving the
-  // generated diff is a separate decision from approving that generation
-  // should happen at all (handled above). Only after this can /apply run.
   async function handleApprovePatchApply(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`approve-apply:${patchId}`);
     try {
       await approvePatchApply(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to approve diff for apply.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to approve diff for apply." }));
     } finally {
       setPatchActionBusy(null);
     }
@@ -381,106 +422,99 @@ export default function FindingsPage() {
 
   async function handleRejectPatchApply(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`reject-apply:${patchId}`);
     try {
       await rejectPatchApply(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to reject diff.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to reject diff." }));
     } finally {
       setPatchActionBusy(null);
     }
   }
 
-  /** The only action in this product that writes to a file on disk. */
   async function handleApplyPatch(findingId: string, patchId: string) {
     if (!selectedProject) return;
-    setPatchesError(null);
+    setPatchesError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setPatchActionBusy(`apply:${patchId}`);
     try {
       await applyPatch(selectedProject.id, patchId);
       await loadPatches(findingId);
     } catch (err) {
-      setPatchesError(err instanceof Error ? err.message : "Failed to apply patch.");
+      setPatchesError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to apply patch." }));
     } finally {
       setPatchActionBusy(null);
     }
   }
 
-  // Phase 21: AI self-review — advisory only, never changes a patch's
-  // status, so it's just a toggle-and-generate pair (like root-cause
-  // analysis), not a gated action like the patch lifecycle handlers above.
   async function toggleSelfReview(patchId: string) {
     if (selfReviewOpenFor === patchId) {
       setSelfReviewOpenFor(null);
       return;
     }
     setSelfReviewOpenFor(patchId);
-    setSelfReviewError(null);
+    setSelfReviewError((prev) => { const next = { ...prev }; delete next[patchId]; return next; });
     if (selfReviews[patchId] || !selectedProject) return;
-    setSelfReviewLoading(patchId);
+    setSelfReviewLoading((prev) => ({ ...prev, [patchId]: true }));
     try {
       const stored = await getPatchSelfReview(selectedProject.id, patchId);
       if (stored.review) {
         setSelfReviews((prev) => ({ ...prev, [patchId]: stored.review! }));
       }
     } catch (err) {
-      setSelfReviewError(err instanceof Error ? err.message : "Failed to load AI self-review.");
+      setSelfReviewError((prev) => ({ ...prev, [patchId]: err instanceof Error ? err.message : "Failed to load AI self-review." }));
     } finally {
-      setSelfReviewLoading(null);
+      setSelfReviewLoading((prev) => ({ ...prev, [patchId]: false }));
     }
   }
 
   async function generateSelfReview(patchId: string) {
     if (!selectedProject) return;
-    setSelfReviewError(null);
-    setSelfReviewLoading(patchId);
+    setSelfReviewError((prev) => { const next = { ...prev }; delete next[patchId]; return next; });
+    setSelfReviewLoading((prev) => ({ ...prev, [patchId]: true }));
     try {
       const result = await selfReviewPatch(selectedProject.id, patchId);
       setSelfReviews((prev) => ({ ...prev, [patchId]: result.review }));
     } catch (err) {
-      setSelfReviewError(err instanceof Error ? err.message : "Failed to generate AI self-review.");
+      setSelfReviewError((prev) => ({ ...prev, [patchId]: err instanceof Error ? err.message : "Failed to generate AI self-review." }));
     } finally {
-      setSelfReviewLoading(null);
+      setSelfReviewLoading((prev) => ({ ...prev, [patchId]: false }));
     }
   }
 
-  // Phase 19: AI test generation, mirroring the patch lifecycle's handler
-  // shape exactly — same two gates, plus a final "write-and-run" step
-  // that both writes a new file and actually executes the suite.
   async function toggleGeneratedTests(findingId: string) {
     if (generatedTestsOpenFor === findingId) {
       setGeneratedTestsOpenFor(null);
       return;
     }
     setGeneratedTestsOpenFor(findingId);
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     await loadGeneratedTests(findingId);
   }
 
   async function loadGeneratedTests(findingId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsLoading(findingId);
+    setGeneratedTestsLoading((prev) => ({ ...prev, [findingId]: true }));
     try {
       const res = await listFindingGeneratedTests(selectedProject.id, findingId);
       setGeneratedTests((prev) => ({ ...prev, [findingId]: res.generatedTests }));
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to load generated tests.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to load generated tests." }));
     } finally {
-      setGeneratedTestsLoading(null);
+      setGeneratedTestsLoading((prev) => ({ ...prev, [findingId]: false }));
     }
   }
 
   async function handleCreateGeneratedTest(findingId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`create:${findingId}`);
     try {
       await createGeneratedTest(selectedProject.id, findingId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to create generated test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to create generated test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -488,13 +522,13 @@ export default function FindingsPage() {
 
   async function handleApproveGeneratedTest(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`approve:${testId}`);
     try {
       await approveGeneratedTest(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to approve generated test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to approve generated test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -502,13 +536,13 @@ export default function FindingsPage() {
 
   async function handleRejectGeneratedTest(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`reject:${testId}`);
     try {
       await rejectGeneratedTest(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to reject generated test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to reject generated test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -516,13 +550,13 @@ export default function FindingsPage() {
 
   async function handleGenerateTest(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`generate:${testId}`);
     try {
       await generateTest(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to generate test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to generate test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -530,13 +564,13 @@ export default function FindingsPage() {
 
   async function handleApproveGeneratedTestWrite(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`approve-write:${testId}`);
     try {
       await approveGeneratedTestWrite(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to approve test for write.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to approve test for write." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -544,28 +578,27 @@ export default function FindingsPage() {
 
   async function handleRejectGeneratedTestWrite(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`reject-write:${testId}`);
     try {
       await rejectGeneratedTestWrite(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to reject generated test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to reject generated test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
   }
 
-  /** Writes the generated test to disk and actually runs the project's real test command. */
   async function handleWriteAndRunGeneratedTest(findingId: string, testId: string) {
     if (!selectedProject) return;
-    setGeneratedTestsError(null);
+    setGeneratedTestsError((prev) => { const next = { ...prev }; delete next[findingId]; return next; });
     setGeneratedTestActionBusy(`write-and-run:${testId}`);
     try {
       await writeAndRunGeneratedTest(selectedProject.id, testId);
       await loadGeneratedTests(findingId);
     } catch (err) {
-      setGeneratedTestsError(err instanceof Error ? err.message : "Failed to write and run generated test.");
+      setGeneratedTestsError((prev) => ({ ...prev, [findingId]: err instanceof Error ? err.message : "Failed to write and run generated test." }));
     } finally {
       setGeneratedTestActionBusy(null);
     }
@@ -600,6 +633,40 @@ export default function FindingsPage() {
               onRun={() => fixAllFindings(selectedProject.id)}
               onDone={load}
             />
+          )}
+          {findings.length > 0 && (
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => setExportMenuOpen((v) => !v)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                aria-haspopup="true"
+                aria-expanded={exportMenuOpen}
+              >
+                Export ▾
+              </button>
+              {exportMenuOpen && (
+                <div className="absolute right-0 z-10 mt-1 w-40 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <button
+                    onClick={() => {
+                      downloadFindingsCsv(findings, selectedProject?.name ?? "project");
+                      setExportMenuOpen(false);
+                    }}
+                    className="block w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Export as CSV
+                  </button>
+                  <button
+                    onClick={() => {
+                      downloadFindingsJson(findings, selectedProject?.name ?? "project");
+                      setExportMenuOpen(false);
+                    }}
+                    className="block w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Export as JSON
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <button
             onClick={handleRunAnalysis}
@@ -669,6 +736,14 @@ export default function FindingsPage() {
                   {finding.file_path}
                   {finding.line_start ? `:${finding.line_start}` : ""}
                 </span>
+                <button
+                  onClick={() => copyFinding(finding)}
+                  title="Copy finding to clipboard"
+                  aria-label="Copy finding to clipboard"
+                  className="ml-auto rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                >
+                  {copiedFindingId === finding.id ? "Copied" : "⧉ Copy"}
+                </button>
               </div>
               {finding.evidence && (
                 <p className="mt-2 text-sm text-slate-800">{finding.evidence}</p>
@@ -692,11 +767,11 @@ export default function FindingsPage() {
 
               {contextOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {contextLoading === finding.id && <p className="text-slate-500">Loading context preview…</p>}
-                  {contextError && contextLoading !== finding.id && (
-                    <p className="text-red-600">{contextError}</p>
+                  {contextLoading[finding.id] && <p className="text-slate-500">Loading context preview…</p>}
+                  {contextError[finding.id] && !contextLoading[finding.id] && (
+                    <p className="text-red-600">{contextError[finding.id]}</p>
                   )}
-                  {contextBundles[finding.id] && contextLoading !== finding.id && (
+                  {contextBundles[finding.id] && !contextLoading[finding.id] && (
                     <ContextPreview bundle={contextBundles[finding.id]} />
                   )}
                 </div>
@@ -711,11 +786,11 @@ export default function FindingsPage() {
 
               {explainOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {explainLoading === finding.id && <ActivityIndicator label="Asking the AI provider to explain this finding" />}
-                  {explainError && explainLoading !== finding.id && (
-                    <p className="text-red-600">{explainError}</p>
+                  {explainLoading[finding.id] && <ActivityIndicator label="Asking the AI provider to explain this finding" />}
+                  {explainError[finding.id] && !explainLoading[finding.id] && (
+                    <p className="text-red-600">{explainError[finding.id]}</p>
                   )}
-                  {explainLoading !== finding.id && explanations[finding.id]?.explanation && (
+                  {!explainLoading[finding.id] && explanations[finding.id]?.explanation && (
                     <div>
                       <p className="whitespace-pre-wrap text-slate-800">{explanations[finding.id].explanation}</p>
                       {explanations[finding.id].provider && (
@@ -725,7 +800,7 @@ export default function FindingsPage() {
                       )}
                     </div>
                   )}
-                  {explainLoading !== finding.id && !explanations[finding.id]?.explanation && !explainError && (
+                  {!explainLoading[finding.id] && !explanations[finding.id]?.explanation && !explainError[finding.id] && (
                     <div>
                       <p className="text-slate-500">No AI explanation generated yet.</p>
                       <button
@@ -759,14 +834,14 @@ export default function FindingsPage() {
 
               {rootCauseOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {rootCauseLoading === finding.id && <ActivityIndicator label="Asking the AI provider for a root-cause analysis" />}
-                  {rootCauseError && rootCauseLoading !== finding.id && (
-                    <p className="text-red-600">{rootCauseError}</p>
+                  {rootCauseLoading[finding.id] && <ActivityIndicator label="Asking the AI provider for a root-cause analysis" />}
+                  {rootCauseError[finding.id] && !rootCauseLoading[finding.id] && (
+                    <p className="text-red-600">{rootCauseError[finding.id]}</p>
                   )}
-                  {rootCauseLoading !== finding.id && rootCauses[finding.id]?.analysis && (
+                  {!rootCauseLoading[finding.id] && rootCauses[finding.id]?.analysis && (
                     <RootCauseView analysis={rootCauses[finding.id].analysis!} provider={rootCauses[finding.id].provider} model={rootCauses[finding.id].model} />
                   )}
-                  {rootCauseLoading !== finding.id && !rootCauses[finding.id]?.analysis && !rootCauseError && (
+                  {!rootCauseLoading[finding.id] && !rootCauses[finding.id]?.analysis && !rootCauseError[finding.id] && (
                     <div>
                       <p className="text-slate-500">No AI root-cause analysis generated yet.</p>
                       <button
@@ -800,14 +875,14 @@ export default function FindingsPage() {
 
               {fixPlanOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {fixPlanLoading === finding.id && <ActivityIndicator label="Asking the AI provider for a fix plan" />}
-                  {fixPlanError && fixPlanLoading !== finding.id && (
-                    <p className="text-red-600">{fixPlanError}</p>
+                  {fixPlanLoading[finding.id] && <ActivityIndicator label="Asking the AI provider for a fix plan" />}
+                  {fixPlanError[finding.id] && !fixPlanLoading[finding.id] && (
+                    <p className="text-red-600">{fixPlanError[finding.id]}</p>
                   )}
-                  {fixPlanLoading !== finding.id && fixPlans[finding.id]?.plan && (
+                  {!fixPlanLoading[finding.id] && fixPlans[finding.id]?.plan && (
                     <FixPlanView plan={fixPlans[finding.id].plan!} provider={fixPlans[finding.id].provider} model={fixPlans[finding.id].model} />
                   )}
-                  {fixPlanLoading !== finding.id && !fixPlans[finding.id]?.plan && !fixPlanError && (
+                  {!fixPlanLoading[finding.id] && !fixPlans[finding.id]?.plan && !fixPlanError[finding.id] && (
                     <div>
                       <p className="text-slate-500">No AI fix plan generated yet.</p>
                       <button
@@ -841,11 +916,11 @@ export default function FindingsPage() {
 
               {patchesOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {patchesLoading === finding.id && <p className="text-slate-500">Loading…</p>}
-                  {patchesError && patchesLoading !== finding.id && (
-                    <p className="text-red-600">{patchesError}</p>
+                  {patchesLoading[finding.id] && <p className="text-slate-500">Loading…</p>}
+                  {patchesError[finding.id] && !patchesLoading[finding.id] && (
+                    <p className="text-red-600">{patchesError[finding.id]}</p>
                   )}
-                  {patchesLoading !== finding.id && (
+                  {!patchesLoading[finding.id] && (
                     <PatchesView
                       findingId={finding.id}
                       projectId={selectedProject?.id ?? null}
@@ -880,11 +955,11 @@ export default function FindingsPage() {
 
               {generatedTestsOpenFor === finding.id && (
                 <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                  {generatedTestsLoading === finding.id && <p className="text-slate-500">Loading…</p>}
-                  {generatedTestsError && generatedTestsLoading !== finding.id && (
-                    <p className="text-red-600">{generatedTestsError}</p>
+                  {generatedTestsLoading[finding.id] && <p className="text-slate-500">Loading…</p>}
+                  {generatedTestsError[finding.id] && !generatedTestsLoading[finding.id] && (
+                    <p className="text-red-600">{generatedTestsError[finding.id]}</p>
                   )}
-                  {generatedTestsLoading !== finding.id && (
+                  {!generatedTestsLoading[finding.id] && (
                     <GeneratedTestsView
                       findingId={finding.id}
                       testList={generatedTests[finding.id] ?? []}
@@ -909,18 +984,6 @@ export default function FindingsPage() {
   );
 }
 
-/**
- * The patch lifecycle UI, matching `db/patchRepo.ts`'s full state machine:
- *   pending_approval -> approved -> proposed (has a diff)          [Phase 17]
- *   proposed -> approved_for_apply -> applied                      [Phase 18]
- *            \-> rejected                \-> failed (retry via Apply again)
- * This is the first AI-Mode surface with explicit "approve before this AI
- * action proceeds" steps in the UI itself, mirroring the two server-side
- * gates docs/AI_MODE.md §4 requires — approving here is a real API call
- * the server checks before /generate or /apply will do anything, not just
- * a UI-only confirmation. "Apply patch" is the only button anywhere in
- * this product that results in a real file on disk changing.
- */
 function PatchesView({
   patchList,
   projectId,
@@ -943,9 +1006,9 @@ function PatchesView({
 }: {
   findingId: string;
   patchList: PatchRecord[];
-  /** Task #90 — which project this finding belongs to, needed to build the zip-download URL. */
+
   projectId: string | null;
-  /** Task #90 — "download" hides the direct "Apply patch" action in favor of a zip-download link. */
+
   applyMode: "direct" | "download";
   hasEnabledProvider: boolean;
   busy: string | null;
@@ -958,8 +1021,8 @@ function PatchesView({
   onApply: (patchId: string) => void;
   selfReviewOpenFor: string | null;
   selfReviews: Record<string, SelfReviewData>;
-  selfReviewLoading: string | null;
-  selfReviewError: string | null;
+  selfReviewLoading: Record<string, boolean>;
+  selfReviewError: Record<string, string>;
   onToggleSelfReview: (patchId: string) => void;
   onGenerateSelfReview: (patchId: string) => void;
 }) {
@@ -1022,7 +1085,7 @@ function PatchesView({
 
               {patch.status === "rejected" && <p className="mt-1 text-slate-400">Rejected before generation.</p>}
 
-              {/* Phase 18's second human-approval gate: review the diff itself before it can ever be applied. */}
+              {}
               {patch.status === "proposed" && (
                 <div className="mt-1 flex gap-2">
                   <button
@@ -1077,13 +1140,7 @@ function PatchesView({
                       )}
                     </>
                   )}
-                  {/* Bug fix: previously there was no way to back out once a diff
-                      passed the second approval gate — only Apply/Download was
-                      offered, even for someone who changed their mind before
-                      actually writing to disk. Only for "approved_for_apply" — a
-                      "failed" apply already tried and failed to write anything,
-                      so the backend's reject-apply route doesn't accept that
-                      status. */}
+                  {}
                   {patch.status === "approved_for_apply" && (
                     <button
                       onClick={() => onRejectApply(patch.id)}
@@ -1121,14 +1178,14 @@ function PatchesView({
 
                   {selfReviewOpenFor === patch.id && (
                     <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">
-                      {selfReviewLoading === patch.id && <ActivityIndicator label="Asking the AI provider to self-review this diff" />}
-                      {selfReviewError && selfReviewLoading !== patch.id && (
-                        <p className="text-red-600">{selfReviewError}</p>
+                      {selfReviewLoading[patch.id] && <ActivityIndicator label="Asking the AI provider to self-review this diff" />}
+                      {selfReviewError[patch.id] && !selfReviewLoading[patch.id] && (
+                        <p className="text-red-600">{selfReviewError[patch.id]}</p>
                       )}
-                      {selfReviewLoading !== patch.id && selfReviews[patch.id] && (
+                      {!selfReviewLoading[patch.id] && selfReviews[patch.id] && (
                         <SelfReviewView review={selfReviews[patch.id]} />
                       )}
-                      {selfReviewLoading !== patch.id && !selfReviews[patch.id] && !selfReviewError && (
+                      {!selfReviewLoading[patch.id] && !selfReviews[patch.id] && !selfReviewError[patch.id] && (
                         <div>
                           <p className="text-slate-500">No AI self-review generated yet.</p>
                           <button
@@ -1170,13 +1227,6 @@ const SELF_REVIEW_CHECKS: { key: keyof Omit<SelfReviewData, "raw">; label: strin
   { key: "architectureConsistency", label: "Architecture consistency" },
 ];
 
-/**
- * Renders a Phase 21 self-review, per docs/AI_MODE.md §6's seven-item
- * checklist. Advisory only, same visual register as `RootCauseView` and
- * the Tests page's `FailureDiagnosisView` — a colored status chip per
- * check plus its one-sentence note, "unknown" (not hidden or guessed)
- * for anything the model's response didn't clearly address.
- */
 function SelfReviewView({ review }: { review: SelfReviewData }) {
   return (
     <div>
@@ -1208,13 +1258,6 @@ function SelfReviewView({ review }: { review: SelfReviewData }) {
   );
 }
 
-/**
- * Phase 19's AI test generation UI, mirroring `PatchesView`'s two-gate
- * shape exactly, plus a final step patch generation doesn't have: writing
- * the file is inseparable here from actually running it — the whole
- * point of "write-and-run" is that nothing is trusted until the project's
- * real test command has actually executed it (docs/AI_MODE.md §1).
- */
 function GeneratedTestsView({
   testList,
   hasEnabledProvider,
@@ -1298,7 +1341,7 @@ function GeneratedTestsView({
 
               {t.status === "rejected" && <p className="mt-1 text-slate-400">Rejected.</p>}
 
-              {/* Second gate: review the generated code itself before it's ever written to disk. */}
+              {}
               {t.status === "proposed" && (
                 <div className="mt-1 flex gap-2">
                   <button
@@ -1355,14 +1398,6 @@ function GeneratedTestsView({
   );
 }
 
-/**
- * Renders a Phase 16 fix plan's seven sections (docs/AI_MODE.md §5). This
- * is advisory only — nothing here is a diff, and nothing on this page can
- * apply it; patch generation (Phase 17) is a separate, later, human-
- * approval-gated workflow. Any section the model's response didn't
- * clearly contain is shown as "Not reported" rather than hidden or
- * guessed, with a raw-response fallback for anything not fully parsed.
- */
 function FixPlanView({
   plan,
   provider,
@@ -1427,15 +1462,6 @@ function FixPlanView({
   );
 }
 
-/**
- * Renders a Phase 15 root-cause analysis, keeping evidence and inference
- * visually distinct per docs/AI_MODE.md §4 — evidence as a bulleted list
- * (what the code directly shows), inference as prose (the AI's
- * hypothesis beyond that). Any field the model's response didn't clearly
- * contain is shown as "Not reported" rather than hidden or guessed, and
- * the full raw response is always available so nothing is lost to a
- * parsing miss.
- */
 function RootCauseView({
   analysis,
   provider,
@@ -1481,12 +1507,6 @@ function RootCauseView({
   );
 }
 
-/**
- * Shows exactly what `selectContextForFinding()` (Phase 13) chose to send
- * for this finding, and what it left out and why. Phase 14's "AI
- * explanation" affordance below is the first real consumer of a bundle
- * like this one — this preview panel itself still triggers no AI call.
- */
 function ContextPreview({ bundle }: { bundle: ContextBundle }) {
   return (
     <div>

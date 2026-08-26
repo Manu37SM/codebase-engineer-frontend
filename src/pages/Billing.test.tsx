@@ -32,20 +32,13 @@ function renderPage() {
 }
 
 describe("BillingPage", () => {
-  // jsdom doesn't implement real navigation — assigning window.location.href
-  // logs a "not implemented" warning and never actually updates the
-  // property, so a real navigation can't be observed by reading it back.
-  // Replace `window.location` with a plain writable stub for these tests
-  // so the redirect assignment itself (what Billing.tsx actually does) can
-  // be asserted on directly.
+
   const originalLocation = window.location;
 
   beforeEach(() => {
     mockedApi.getBillingStatus.mockReset();
     mockedApi.createBillingCheckout.mockReset();
-    // Default: no OAuth providers configured, no session — keeps the
-    // pre-existing billing-only tests unaffected by the new "Connected
-    // accounts" section, which renders nothing in that state.
+
     mockedApi.getAuthProviders.mockReset().mockResolvedValue({ google: false, github: false });
     mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
     Object.defineProperty(window, "location", {
@@ -164,8 +157,6 @@ describe("BillingPage", () => {
     await user.click(await screen.findByRole("button", { name: "Upgrade to Pro" }));
     await screen.findByText("Redirecting to checkout…");
 
-    // Simulate the browser restoring this exact page (Back button / bfcache)
-    // instead of the checkout actually completing.
     act(() => {
       window.dispatchEvent(new Event("pageshow"));
     });

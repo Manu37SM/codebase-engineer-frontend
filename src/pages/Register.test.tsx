@@ -16,9 +16,6 @@ vi.mock("../lib/api", async () => {
   };
 });
 
-// Stub the real Cloudflare-script-loading widget so these tests are
-// deterministic regardless of whether frontend/.env sets a real
-// VITE_TURNSTILE_SITE_KEY — auto-verifies as soon as it would render.
 vi.mock("../components/Turnstile", () => ({
   default: ({ onVerify }: { onVerify: (token: string) => void }) => {
     onVerify("test-token");
@@ -120,10 +117,7 @@ describe("RegisterPage", () => {
   });
 
   it("submits without a token when Turnstile is reported enabled but no site key is configured locally", async () => {
-    // Misconfigured deployment: backend has TURNSTILE_SECRET_KEY set but
-    // this build has no VITE_TURNSTILE_SITE_KEY, so the widget can't
-    // render. The page still submits — the backend's existing fail-closed
-    // check (missing token -> 400) is what actually protects it.
+
     vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "");
     mockedApi.getAuthProviders.mockResolvedValue({ google: false, github: false, turnstile: true });
     mockedApi.registerAccount.mockResolvedValue({
