@@ -153,10 +153,6 @@ export default function FindingsPage() {
       });
   }
 
-  // Guards against a stale response overwriting newer state — e.g. the
-  // user switches project A -> B (or changes filters) while A's request is
-  // still in flight; if A's response resolves after B's request has
-  // started, it must not clobber B's already-rendered findings with A's.
   const loadRequestId = useRef(0);
 
   function load() {

@@ -52,9 +52,6 @@ export default function TestsPage() {
       .catch(() => setTier(null));
   }, []);
 
-  // Guards against a stale response overwriting newer state if the user
-  // switches projects while a request is still in flight (see the same
-  // fix in Findings.tsx).
   const loadRequestId = useRef(0);
 
   function loadHistory() {

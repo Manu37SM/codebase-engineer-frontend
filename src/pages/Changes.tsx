@@ -33,9 +33,6 @@ export default function ChangesPage() {
   const [tab, setTab] = useState<"patches" | "tests">("patches");
   const [filter, setFilter] = useState<"all" | "pending">("pending");
 
-  // Guards against a stale response overwriting newer state if the user
-  // switches projects while a request is still in flight (see the same
-  // fix in Findings.tsx).
   const loadRequestId = useRef(0);
 
   function load() {
