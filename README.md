@@ -6,15 +6,13 @@ Audit, AI Mode configuration, and Billing/Settings.
 
 This folder is its own git repository, separate from the project root and
 from `../backend/` — see the root [`README.md`](../README.md#version-control-layout)
-for why. For product scope and full feature status, see the docs in
-[`../docs/`](../docs/); this file only covers working inside this folder.
+for why. This file only covers working inside this folder.
 
 ## Requirements
 
 Node.js 18+. A running backend to talk to — either `../backend`'s dev
 server (`npm run dev`, http://localhost:4000) via this project's Vite dev
-proxy, or the packaged single-process build (see
-[`../docs/PACKAGING.md`](../docs/PACKAGING.md)).
+proxy, or the packaged single-process build.
 
 ## Setup
 
@@ -32,8 +30,7 @@ npm test              # vitest run — the full frontend test suite
 ```
 
 `npm run build`'s output (`dist/`) is what `backend`'s own build copies
-into itself to serve as a single process — see
-[`../docs/PACKAGING.md`](../docs/PACKAGING.md).
+into itself to serve as a single process.
 
 ## Layout
 
@@ -73,5 +70,4 @@ call, following the conventions in `pages/AiMode.test.tsx`/`Billing.test.tsx`.
 npm test
 ```
 
-See [`../docs/TESTING.md`](../docs/TESTING.md) for the project-wide testing
-strategy.
+Tests live beside the code they cover.

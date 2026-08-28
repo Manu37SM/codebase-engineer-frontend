@@ -189,7 +189,7 @@ export default function BillingPage() {
       <h2 className="mt-6 text-sm font-semibold text-slate-900">Billing</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-500">
         Billing is entirely optional. Free Mode and AI Mode using your own provider keys keep
-        working exactly the same whether billing is configured or not — see docs/MONETIZATION.md.
+        working exactly the same whether billing is configured or not.
         A monthly AI-operation cap only applies when the server operator has configured Dodo
         Payments.
       </p>
@@ -212,9 +212,8 @@ export default function BillingPage() {
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">DODO_PAYMENTS_WEBHOOK_KEY</code>, and{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">DODO_PRODUCT_ID</code> —
               on the machine running the backend, then restarting it. See{" "}
-              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">backend/.env.example</code> and the
-              step-by-step guide in <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">docs/MONETIZATION.md</code>{" "}
-              (§6) for exactly where to get the values and how to set them on Windows/PowerShell,
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">backend/.env.example</code>{" "}
+              for exactly where to get the values and how to set them on Windows/PowerShell,
               macOS/Linux, systemd, or Docker.
             </p>
           </div>
