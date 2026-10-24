@@ -566,7 +566,7 @@ export function getGitHubSignInUrl(): string {
   return "/api/v1/auth/github/start";
 }
 
-export function getAuthProviders(): Promise<{ google: boolean; github: boolean }> {
+export function getAuthProviders(): Promise<{ google: boolean; github: boolean; turnstile: boolean }> {
   return request("/api/v1/auth/providers");
 }
 
