@@ -4,7 +4,10 @@ import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, reg
 import { useAuth } from "../context/AuthContext";
 import Turnstile from "../components/Turnstile";
 
-const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
+// Read at render time, not import time, so it reflects the current env
+// (Vite still inlines it statically in production builds).
+const getTurnstileSiteKey = () =>
+  (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
 
 export default function RegisterPage() {
   const { refresh } = useAuth();
@@ -14,13 +17,15 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [providers, setProviders] = useState({ google: false, github: false });
+  const [providers, setProviders] = useState({ google: false, github: false, turnstile: false });
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // Show the widget only when the server enforces Turnstile AND this build has a site key.
+  const turnstileSiteKey = providers.turnstile ? getTurnstileSiteKey() : undefined;
 
   useEffect(() => {
     getAuthProviders()
       .then(setProviders)
-      .catch(() => setProviders({ google: false, github: false }));
+      .catch(() => setProviders({ google: false, github: false, turnstile: false }));
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -92,9 +97,9 @@ export default function RegisterPage() {
             />
             <p className="mt-1 text-xs text-slate-400">At least 8 characters.</p>
           </div>
-          {TURNSTILE_SITE_KEY && (
+          {turnstileSiteKey && (
             <Turnstile
-              siteKey={TURNSTILE_SITE_KEY}
+              siteKey={turnstileSiteKey}
               onVerify={setTurnstileToken}
               onExpire={() => setTurnstileToken(null)}
             />
@@ -102,7 +107,7 @@ export default function RegisterPage() {
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)}
+            disabled={submitting || (Boolean(turnstileSiteKey) && !turnstileToken)}
             className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
           >
             {submitting ? "Creating account…" : "Create account"}
