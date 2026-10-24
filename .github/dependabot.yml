@@ -5,6 +5,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    groups:
+      # react / react-dom must have the exact same version, and @types/* must
+      # match the major — separate PRs produce a broken intermediate state.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
