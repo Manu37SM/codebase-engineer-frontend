@@ -95,7 +95,7 @@ describe("LoginPage", () => {
     expect(mockedApi.login).toHaveBeenCalledWith({
       email: "a@b.com",
       password: "a-real-password-123",
-      turnstileToken: "test-token",
+      turnstileToken: undefined,
     });
     expect(await screen.findByText("Landed on workspace")).toBeInTheDocument();
   });

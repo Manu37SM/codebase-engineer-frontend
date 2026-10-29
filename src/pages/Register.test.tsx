@@ -101,7 +101,7 @@ describe("RegisterPage", () => {
       email: "a@b.com",
       password: "a-real-password-123",
       displayName: undefined,
-      turnstileToken: "test-token",
+      turnstileToken: undefined,
     });
     expect(await screen.findByText("Landed on workspace")).toBeInTheDocument();
   });
