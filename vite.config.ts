@@ -17,12 +17,13 @@ export default defineConfig({
         // size — splitting it into its own chunk means every other page
         // (which never imports Charts.tsx) doesn't pay for it on first
         // load.
-        //
-        // Function form (not the object shorthand) — Vite 8's Rolldown
-        // bundler only accepts a function here.
+        // Function form: Vite 8 (Rolldown) rejects the object form of
+        // `manualChunks`. Also pulls in recharts' d3/victory-vendor deps so
+        // the chunk matches what the old object form produced.
         manualChunks(id: string) {
-          if (/node_modules[\\/](recharts|victory-vendor|d3-[^\\/]+)[\\/]/.test(id)) return "charts";
-          return undefined;
+          if (/node_modules\/(recharts|d3-[^/]+|victory-vendor|internmap)\//.test(id)) {
+            return "charts";
+          }
         },
       },
     },
