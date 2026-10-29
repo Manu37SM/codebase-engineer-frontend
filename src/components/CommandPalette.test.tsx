@@ -90,8 +90,10 @@ describe("CommandPalette (Ctrl/Cmd+K) — the palette itself stays; only its the
     const input = await screen.findByLabelText("Command palette search");
     await user.type(input, "widget");
 
-    expect(await screen.findByText("widget-app")).toBeInTheDocument();
-    await user.click(screen.getByText("widget-app"));
+    // The sidebar's repository switcher also lists "widget-app", so scope to the palette dialog.
+    const dialog = screen.getByRole("dialog");
+    expect(await within(dialog).findByText("widget-app")).toBeInTheDocument();
+    await user.click(within(dialog).getByText("widget-app"));
 
     await waitFor(() => {
       expect(window.localStorage.getItem("codebase-engineer.selectedProjectId")).toBe("p1");

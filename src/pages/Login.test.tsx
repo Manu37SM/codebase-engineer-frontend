@@ -16,12 +16,19 @@ vi.mock("../lib/api", async () => {
   };
 });
 
-vi.mock("../components/Turnstile", () => ({
-  default: ({ onVerify }: { onVerify: (token: string) => void }) => {
-    onVerify("test-token");
-    return null;
-  },
-}));
+vi.mock("../components/Turnstile", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: ({ onVerify }: { onVerify: (token: string) => void }) => {
+      // Report the token from an effect — calling a parent's setState during render is a React error.
+      useEffect(() => {
+        onVerify("test-token");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return null;
+    },
+  };
+});
 
 const mockedApi = api as unknown as {
   getCurrentUser: ReturnType<typeof vi.fn>;
@@ -88,7 +95,7 @@ describe("LoginPage", () => {
     expect(mockedApi.login).toHaveBeenCalledWith({
       email: "a@b.com",
       password: "a-real-password-123",
-      turnstileToken: undefined,
+      turnstileToken: "test-token",
     });
     expect(await screen.findByText("Landed on workspace")).toBeInTheDocument();
   });

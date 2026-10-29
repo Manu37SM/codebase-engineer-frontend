@@ -3,10 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getAuthProviders, getGitHubSignInUrl, getGoogleSignInUrl, registerAccount } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import Turnstile from "../components/Turnstile";
+import PasswordInput from "../components/PasswordInput";
+import { BrandMark } from "../components/ui";
 
-const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
+// Read lazily (not at import time) so the key can be changed/stubbed without reloading the module.
+function getTurnstileSiteKey(): string | undefined {
+  return (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || undefined;
+}
 
 export default function RegisterPage() {
+  const TURNSTILE_SITE_KEY = getTurnstileSiteKey();
   const { refresh } = useAuth();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState("");
@@ -49,7 +55,8 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
-      <div className="w-full max-w-sm rounded border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <BrandMark className="mb-4 h-9 w-9" />
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Create an account</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Codebase Engineer</p>
 
@@ -82,14 +89,7 @@ export default function RegisterPage() {
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400" htmlFor="register-password">
               Password
             </label>
-            <input
-              id="register-password"
-              type="password"
-              autoComplete="new-password"
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <PasswordInput id="register-password" autoComplete="new-password" value={password} onChange={setPassword} />
             <p className="mt-1 text-xs text-slate-400">At least 8 characters.</p>
           </div>
           {TURNSTILE_SITE_KEY && (
@@ -99,7 +99,11 @@ export default function RegisterPage() {
               onExpire={() => setTurnstileToken(null)}
             />
           )}
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
           <button
             type="submit"
             disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)}

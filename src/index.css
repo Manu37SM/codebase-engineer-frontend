@@ -70,3 +70,148 @@
   background-color: theme("colors.slate.900");
   color: theme("colors.slate.100");
 }
+
+/*
+ * Status colours (badges, alerts, banners) that were authored with light-only
+ * tints (e.g. `bg-emerald-100 text-emerald-800`). On the dark theme those read
+ * as glaring pastel blocks, so recolor them to low-key tinted surfaces.
+ */
+.dark .bg-emerald-100 { background-color: theme("colors.emerald.950 / 70%"); }
+.dark .bg-red-50,
+.dark .bg-red-100 { background-color: theme("colors.red.950 / 60%"); }
+.dark .bg-amber-100 { background-color: theme("colors.amber.950 / 70%"); }
+.dark .bg-orange-100 { background-color: theme("colors.orange.950 / 70%"); }
+.dark .text-emerald-700,
+.dark .text-emerald-800 { color: theme("colors.emerald.300"); }
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800 { color: theme("colors.red.400"); }
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 { color: theme("colors.amber.300"); }
+.dark .text-orange-800 { color: theme("colors.orange.300"); }
+.dark .border-red-200,
+.dark .border-red-300 { border-color: theme("colors.red.900"); }
+.dark .border-amber-300 { border-color: theme("colors.amber.800"); }
+
+/*
+ * Primary buttons are authored as `bg-slate-900 text-white`, which vanishes
+ * against the dark page background. Invert them (but leave the active nav
+ * link, which carries aria-current, alone).
+ */
+.dark :is(button, a).bg-slate-900.text-white:not([aria-current]) {
+  background-color: theme("colors.slate.100");
+  color: theme("colors.slate.900");
+}
+.dark :is(button, a).bg-slate-900.text-white:not([aria-current]):hover:not(:disabled) {
+  background-color: theme("colors.white");
+}
+
+/* ------------------------------------------------------------------ *
+ * Global polish: focus, scrollbars, loading skeletons, motion.
+ * ------------------------------------------------------------------ */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Consistent, visible keyboard focus everywhere (mouse clicks stay clean). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid theme("colors.sky.500");
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background-color: theme("colors.sky.500 / 35%");
+}
+
+.dark * {
+  scrollbar-width: thin;
+  scrollbar-color: theme("colors.slate.700") transparent;
+}
+.dark *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background-color: theme("colors.slate.700");
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: theme("colors.slate.600");
+}
+
+/* Shimmering placeholder used by <Skeleton />. */
+.skeleton {
+  background-color: theme("colors.slate.200");
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.5) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.dark .skeleton {
+  background-color: theme("colors.slate.800");
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(148 163 184 / 0.12) 50%,
+    transparent 100%
+  );
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Gentle page entrance. */
+.page-enter {
+  animation: page-enter 180ms ease-out both;
+}
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  nav,
+  [data-no-print] {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}

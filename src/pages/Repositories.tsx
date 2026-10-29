@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useProjects } from "../context/ProjectContext";
 import {
   deleteProject,
@@ -15,6 +15,7 @@ import { getAutoScanOnRegister } from "../lib/settings";
 import ActivityIndicator from "../components/ActivityIndicator";
 import RegisterProjectForm from "../components/RegisterProjectForm";
 import AiProviderReminder from "../components/AiProviderReminder";
+import { BTN_SECONDARY, Icon, PageHeader, Skeleton } from "../components/ui";
 
 export default function RepositoriesPage() {
   const { projects, loading, error, selectedProjectId, selectProject, refresh } = useProjects();
@@ -32,6 +33,14 @@ export default function RepositoriesPage() {
   const [registeringKey, setRegisteringKey] = useState<string | null>(null);
 
   const [showAiReminder, setShowAiReminder] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  const visibleProjects = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return q
+      ? projects.filter((p) => p.name.toLowerCase().includes(q) || p.root_path.toLowerCase().includes(q))
+      : projects;
+  }, [projects, filter]);
 
   async function handleRegistered(projectId: string) {
     await refresh();
@@ -135,67 +144,103 @@ export default function RepositoriesPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-slate-900">Repositories</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Register a local repository by its absolute path, then scan it. Nothing is uploaded — all
-        discovery and indexing runs against the path on this machine.
-      </p>
+      <PageHeader
+        title="Repositories"
+        subtitle="Register a local repository by its absolute path, then scan it. Nothing is uploaded — all discovery and indexing runs against the path on this machine."
+      />
 
-      <RegisterProjectForm onRegistered={handleRegistered} className="mt-4 flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4" />
+      <RegisterProjectForm
+        onRegistered={handleRegistered}
+        className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-900"
+      />
 
       {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
 
-      {actionMessage && <p className="mt-3 text-sm text-slate-600">{actionMessage}</p>}
+      {actionMessage && (
+        <p role="status" className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+          {actionMessage}
+        </p>
+      )}
 
       <div className="mt-6">
-        {loading && <p className="text-sm text-slate-500">Loading repositories…</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {loading && (
+          <div role="status" aria-live="polite" className="space-y-2">
+            <span className="sr-only">Loading repositories…</span>
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+        )}
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {!loading && !error && projects.length === 0 && (
-          <p className="text-sm text-slate-500">No repositories registered yet.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">No repositories registered yet.</p>
         )}
         {!loading && !error && projects.length > 0 && (
-          <p className="mb-2 text-xs text-slate-400">
-            "Remove" only forgets Codebase Engineer's own record of a repository (findings, scan
-            history, etc.) — it never touches the actual files on disk.
-          </p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-2xl text-xs text-slate-400 dark:text-slate-500">
+              "Remove" only forgets Codebase Engineer's own record of a repository (findings, scan
+              history, etc.) — it never touches the actual files on disk.
+            </p>
+            {projects.length > 4 && (
+              <div className="relative w-full max-w-xs">
+                <Icon
+                  name="search"
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="search"
+                  aria-label="Filter repositories"
+                  placeholder="Filter repositories…"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                />
+              </div>
+            )}
+          </div>
         )}
-        <ul className="divide-y divide-slate-200 rounded border border-slate-200 bg-white">
-          {projects.map((project) => {
+        {filter && visibleProjects.length === 0 && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">No repositories match "{filter}".</p>
+        )}
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white shadow-sm empty:hidden dark:divide-slate-800 dark:border-slate-700/70 dark:bg-slate-900">
+          {visibleProjects.map((project) => {
             const subResult = subProjectsById[project.id];
             const nestedCandidates = subResult?.candidates.filter((c) => c.relativePath !== "") ?? [];
             return (
               <li key={project.id} className="flex flex-col gap-2 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-slate-900">{project.name}</div>
-                    <div className="text-xs text-slate-500">{project.root_path}</div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{project.name}</div>
+                    <div className="truncate text-xs text-slate-500 dark:text-slate-400" title={project.root_path}>
+                      {project.root_path}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {}
                     {busyProjectId === project.id && (
                       <ActivityIndicator label="Discovering & indexing files" />
                     )}
                     {selectedProjectId === project.id ? (
-                      <span className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                        <Icon name="check" className="h-3 w-3" />
                         Selected
                       </span>
                     ) : (
                       <button
-                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        className={BTN_SECONDARY}
                         onClick={() => selectProject(project.id)}
                       >
                         Select
                       </button>
                     )}
                     <button
-                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className={BTN_SECONDARY}
                       disabled={busyProjectId === project.id}
                       onClick={() => handleDiscoverAndIndex(project.id)}
                     >
                       {busyProjectId === project.id ? "Scanning…" : "Scan"}
                     </button>
                     <button
-                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className={BTN_SECONDARY}
                       disabled={detectingId === project.id}
                       onClick={() => handleDetectSubProjects(project.id)}
                     >
@@ -207,16 +252,16 @@ export default function RepositoriesPage() {
                     </button>
                     {confirmRemoveId === project.id ? (
                       <span className="flex items-center gap-1">
-                        <span className="text-xs text-slate-500">Remove from workspace?</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Remove from workspace?</span>
                         <button
-                          className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          className="inline-flex items-center rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/50"
                           disabled={removingId === project.id}
                           onClick={() => handleRemove(project.id)}
                         >
                           {removingId === project.id ? "Removing…" : "Confirm"}
                         </button>
                         <button
-                          className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          className={BTN_SECONDARY}
                           disabled={removingId === project.id}
                           onClick={() => setConfirmRemoveId(null)}
                         >
@@ -236,7 +281,7 @@ export default function RepositoriesPage() {
                 </div>
 
                 {subResult && (
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-950/50">
                     {nestedCandidates.length === 0 ? (
                       <p className="text-slate-500">No other project roots detected inside this folder.</p>
                     ) : (

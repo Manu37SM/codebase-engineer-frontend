@@ -23,13 +23,28 @@ import {
   type GitAnalysisResult,
   type RepositorySnapshot,
 } from "../lib/types";
-import {
-  ChurnHotspotsChart,
-  FindingsTrendChart,
-  LanguageBreakdownChart,
-  SeverityBreakdownChart,
-} from "../components/Charts";
+import { ChurnHotspotsChart, FindingsTrendChart, SeverityBreakdownChart } from "../components/Charts";
 import ActivityIndicator from "../components/ActivityIndicator";
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  Card,
+  CopyButton,
+  HealthRing,
+  Icon,
+  MeterBar,
+  PageHeader,
+  PageSkeleton,
+  Skeleton,
+  StatCard,
+} from "../components/ui";
+import {
+  SEVERITY_ORDER,
+  SEVERITY_WEIGHTS,
+  computeHealth,
+  timeAgo,
+  topFindingFiles,
+} from "../lib/health";
 import RegisterProjectForm from "../components/RegisterProjectForm";
 import AiProviderReminder from "../components/AiProviderReminder";
 import { getAutoScanOnRegister } from "../lib/settings";
@@ -351,8 +366,8 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+        <PageHeader title={selectedProject.name} subtitle={selectedProject.root_path} />
+        <PageSkeleton label="Loading dashboard" />
       </div>
     );
   }
@@ -360,8 +375,16 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+        <PageHeader title={selectedProject.name} subtitle={selectedProject.root_path} />
+        <div
+          role="alert"
+          className="mt-4 flex max-w-2xl items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+        >
+          <span>{error}</span>
+          <button type="button" onClick={() => setScanVersion((v) => v + 1)} className={BTN_SECONDARY}>
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -369,43 +392,45 @@ export default function DashboardPage() {
   if (!snapshot) {
     return (
       <div>
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
+        <PageHeader title={selectedProject.name} subtitle={selectedProject.root_path} />
         {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
-        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-          This repository hasn't been scanned yet.
-        </p>
-        <button
-          onClick={handleScanNow}
-          disabled={scanning}
-          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
-          {scanning ? "Scanning…" : "Scan now"}
-        </button>
-        {scanning && (
-          <div className="mt-2">
-            <ActivityIndicator label="Discovering & indexing files" />
-          </div>
-        )}
-        {scanError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{scanError}</p>}
+        <div className="mt-6 flex max-w-xl flex-col items-start gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            This repository hasn't been scanned yet. A scan indexes the files, runs the static analysis rules and
+            builds the dashboard — it works fully offline.
+          </p>
+          <button onClick={handleScanNow} disabled={scanning} className={BTN_PRIMARY}>
+            {scanning ? "Scanning…" : "Scan now"}
+          </button>
+          {scanning && <ActivityIndicator label="Discovering & indexing files" />}
+          {scanError && <p className="text-sm text-red-600 dark:text-red-400">{scanError}</p>}
+        </div>
       </div>
     );
   }
 
   const parsed = parseSnapshot(snapshot);
+  const health = findings ? computeHealth(findings) : null;
+  const hasCompletedRun = analysisRuns?.some((r) => r.status === "completed") ?? false;
+  const hotspots = findings ? topFindingFiles(findings, 5) : [];
+  const maxHotspot = hotspots[0]?.total ?? 0;
+  const testRatio =
+    fileTotals && fileTotals.total > 0 ? `${Math.round((fileTotals.test / fileTotals.total) * 100)}%` : "—";
+  const totalLoc = parsed.languages.reduce((sum, l) => sum + l.approxLoc, 0);
+  const maxLangFiles = Math.max(0, ...parsed.languages.map((l) => l.fileCount));
+  const wt = parsed.workingTreeStatus;
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 max-w-full">
-          {projects.length > 1 ? (
-
+      <PageHeader
+        title={
+          projects.length > 1 ? (
             <div className="relative inline-block max-w-full">
               <select
                 aria-label="Switch repository"
                 value={selectedProject.id}
                 onChange={(e) => selectProject(e.target.value)}
-                className="w-full max-w-full cursor-pointer appearance-none truncate rounded bg-transparent py-0.5 pl-0 pr-6 text-lg font-semibold text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:text-slate-100 dark:hover:bg-slate-800"
+                className="w-full max-w-full cursor-pointer appearance-none truncate rounded bg-transparent py-0.5 pl-0 pr-6 text-xl font-semibold text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:text-slate-100 dark:hover:bg-slate-800"
               >
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
@@ -427,26 +452,39 @@ export default function DashboardPage() {
               </svg>
             </div>
           ) : (
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedProject.name}</h1>
-          )}
-          <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{selectedProject.root_path}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleScanNow}
-            disabled={scanning}
-            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            {scanning ? "Rescanning…" : "Rescan"}
-          </button>
-          <Link
-            to="/findings"
-            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            View findings
-          </Link>
-        </div>
-      </div>
+            selectedProject.name
+          )
+        }
+        subtitle={
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-xs" title={selectedProject.root_path}>
+              {selectedProject.root_path}
+            </span>
+            <CopyButton
+              text={selectedProject.root_path}
+              label="Copy"
+              ariaLabel="Copy repository path"
+              className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            />
+          </span>
+        }
+        actions={
+          <>
+            <button onClick={handleScanNow} disabled={scanning} className={BTN_SECONDARY}>
+              <Icon name="refresh" className={`h-3.5 w-3.5 ${scanning ? "animate-spin" : ""}`} />
+              {scanning ? "Rescanning…" : "Rescan"}
+            </button>
+            <Link to="/audit" className={BTN_SECONDARY}>
+              <Icon name="audit" className="h-3.5 w-3.5" />
+              Audit report
+            </Link>
+            <Link to="/findings" className={BTN_PRIMARY}>
+              View findings
+              <Icon name="arrowRight" className="h-3.5 w-3.5" />
+            </Link>
+          </>
+        }
+      />
       {showAiReminder && <AiProviderReminder onDismiss={() => setShowAiReminder(false)} />}
       {scanning && (
         <div className="mt-2">
@@ -455,114 +493,194 @@ export default function DashboardPage() {
       )}
       {scanError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{scanError}</p>}
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Total files" value={fileTotals?.total ?? "—"} />
-        <StatTile label="Test files" value={fileTotals?.test ?? "—"} />
-        <StatTile
-          label="Git branch"
-          value={parsed.gitBranch ?? "—"}
-        />
-        <StatTile
-          label="Working tree"
-          value={
-            parsed.workingTreeStatus === null
-              ? "n/a"
-              : parsed.workingTreeStatus.clean
-                ? "clean"
-                : "dirty"
-          }
-        />
+      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card title="Repository health">
+          {health === null ? (
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-[88px] w-[88px] rounded-full" />
+              <Skeleton className="h-16 flex-1" />
+            </div>
+          ) : !hasCompletedRun && health.total === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No analysis has run yet. Rescan to compute a health score.
+            </p>
+          ) : (
+            <div className="flex items-center gap-4">
+              <HealthRing score={health.score} grade={health.grade} />
+              <div className="min-w-0 text-sm">
+                <p className="text-slate-700 dark:text-slate-200">
+                  {health.total === 0
+                    ? "No findings in the latest run."
+                    : `${health.total} open finding${health.total === 1 ? "" : "s"}`}
+                </p>
+                <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                  {SEVERITY_ORDER.filter((sev) => health.counts[sev] > 0).map((sev) => (
+                    <li key={sev} className="tabular-nums">
+                      {`${health.counts[sev]} ${sev}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          <p
+            className="mt-3 text-[11px] leading-snug text-slate-400 dark:text-slate-500"
+            title="Each finding subtracts points from 100, floored at 0."
+          >
+            Starts at 100; −{SEVERITY_WEIGHTS.critical} per critical, −{SEVERITY_WEIGHTS.high} high, −
+            {SEVERITY_WEIGHTS.medium} medium, −{SEVERITY_WEIGHTS.low} low.
+          </p>
+        </Card>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:col-span-2">
+          <StatCard label="Total files" value={fileTotals?.total ?? "—"} />
+          <StatCard label="Test files" value={fileTotals?.test ?? "—"} />
+          <StatCard label="Test file ratio" value={testRatio} hint="of all indexed files" />
+          <StatCard label="Git branch" value={parsed.gitBranch ?? "—"} />
+          <StatCard
+            label="Working tree"
+            value={wt === null ? "n/a" : wt.clean ? "clean" : "dirty"}
+            tone={wt === null ? "default" : wt.clean ? "good" : "warn"}
+            hint={
+              wt && !wt.clean
+                ? `${wt.modified} modified · ${wt.staged} staged · ${wt.untracked} untracked`
+                : undefined
+            }
+          />
+          <StatCard
+            label="Open findings"
+            value={findings?.length ?? "—"}
+            to="/findings"
+            tone={health && (health.counts.critical > 0 || health.counts.high > 0) ? "bad" : "default"}
+            hint={totalLoc > 0 ? `~${totalLoc.toLocaleString()} LOC indexed` : undefined}
+          />
+        </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <section>
-          <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
-          {parsed.languages.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-500">None detected.</p>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Findings by severity">
+          {findingsError && <p className="text-sm text-red-600 dark:text-red-400">{findingsError}</p>}
+          {!findingsError && findings === null && <Skeleton className="h-40" />}
+          {!findingsError && findings !== null && <SeverityBreakdownChart findings={findings} />}
+        </Card>
+
+        <Card title="Findings trend">
+          {analysisRunsError && <p className="text-sm text-red-600 dark:text-red-400">{analysisRunsError}</p>}
+          {!analysisRunsError && analysisRuns === null && <Skeleton className="h-40" />}
+          {!analysisRunsError && analysisRuns !== null && <FindingsTrendChart runs={analysisRuns} />}
+        </Card>
+
+        <Card
+          title="Files to look at first"
+          action={
+            hotspots.length > 0 ? (
+              <Link to="/findings" className="text-xs text-slate-500 underline-offset-2 hover:underline dark:text-slate-400">
+                All findings
+              </Link>
+            ) : undefined
+          }
+        >
+          {findings === null ? (
+            <Skeleton className="h-32" />
+          ) : hotspots.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">No file-level findings — nothing to triage.</p>
           ) : (
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {parsed.languages.map((l) => (
-                <li key={l.language} className="flex justify-between">
-                  <span>{l.language}</span>
-                  <span className="text-slate-500">
-                    {l.fileCount} files · ~{l.approxLoc} LOC
-                  </span>
+            <ul className="space-y-3">
+              {hotspots.map((h) => (
+                <li key={h.path}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={h.path}>
+                      {h.path}
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                      {h.total} finding{h.total === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <MeterBar
+                      value={h.total}
+                      max={maxHotspot}
+                      className={
+                        h.worst === "critical"
+                          ? "bg-red-500"
+                          : h.worst === "high"
+                            ? "bg-orange-500"
+                            : h.worst === "medium"
+                              ? "bg-amber-500"
+                              : "bg-slate-400"
+                      }
+                    />
+                  </div>
                 </li>
               ))}
             </ul>
           )}
-        </section>
+        </Card>
 
-        <section>
-          <h2 className="text-sm font-semibold text-slate-900">Build &amp; dependencies</h2>
-          <dl className="mt-2 space-y-1 text-sm text-slate-700">
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Build system</dt>
-              <dd>{parsed.buildSystems.join(", ") || "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Package manager</dt>
-              <dd>{parsed.packageManagers.join(", ") || "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Frameworks</dt>
-              <dd>{parsed.frameworks.join(", ") || "—"}</dd>
-            </div>
+        <Card
+          title={`Churn hotspots${gitAnalysis?.isGitRepository ? ` (last ${gitAnalysis.churnWindowDays} days)` : ""}`}
+        >
+          {gitError && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Unavailable — see Git activity below.</p>
+          )}
+          {!gitError && !gitAnalysis && <Skeleton className="h-32" />}
+          {!gitError && gitAnalysis && !gitAnalysis.isGitRepository && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Not applicable — not a Git repository.</p>
+          )}
+          {!gitError && gitAnalysis?.isGitRepository && <ChurnHotspotsChart churn={gitAnalysis.fileChurn} />}
+        </Card>
+
+        <Card title="Languages">
+          {parsed.languages.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">None detected.</p>
+          ) : (
+            <ul className="space-y-2.5 text-sm">
+              {parsed.languages.map((l) => (
+                <li key={l.language}>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-800 dark:text-slate-100">{l.language}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {l.fileCount} files · ~{l.approxLoc} LOC
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <MeterBar value={l.fileCount} max={maxLangFiles} className="bg-sky-500" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Build & dependencies">
+          <dl className="space-y-2 text-sm">
+            {[
+              ["Build system", parsed.buildSystems],
+              ["Package manager", parsed.packageManagers],
+              ["Frameworks", parsed.frameworks],
+            ].map(([label, values]) => (
+              <div key={label as string} className="flex justify-between gap-4">
+                <dt className="text-slate-500 dark:text-slate-400">{label as string}</dt>
+                <dd className="text-right text-slate-800 dark:text-slate-100">
+                  {(values as string[]).join(", ") || "—"}
+                </dd>
+              </div>
+            ))}
           </dl>
-        </section>
+          <DependenciesSection dependencies={dependencies} dependenciesError={dependenciesError} />
+        </Card>
       </div>
 
-      <section className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Findings by severity</h2>
-          <div className="mt-2">
-            {findingsError && <p className="text-sm text-red-600 dark:text-red-400">{findingsError}</p>}
-            {!findingsError && findings === null && <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>}
-            {!findingsError && findings !== null && <SeverityBreakdownChart findings={findings} />}
-          </div>
-        </div>
+      <Card title="Git activity" className="mt-4">
+        <GitActivitySection gitAnalysis={gitAnalysis} gitError={gitError} />
+      </Card>
 
-        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Findings trend</h2>
-          <div className="mt-2">
-            {analysisRunsError && <p className="text-sm text-red-600 dark:text-red-400">{analysisRunsError}</p>}
-            {!analysisRunsError && analysisRuns === null && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-            )}
-            {!analysisRunsError && analysisRuns !== null && <FindingsTrendChart runs={analysisRuns} />}
-          </div>
-        </div>
-
-        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Languages (by file count)</h2>
-          <div className="mt-2">
-            <LanguageBreakdownChart languages={parsed.languages} />
-          </div>
-        </div>
-
-        <div className="rounded border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Churn hotspots{gitAnalysis?.isGitRepository ? ` (last ${gitAnalysis.churnWindowDays} days)` : ""}
-          </h2>
-          <div className="mt-2">
-            {gitError && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Unavailable — see Git activity below.</p>
-            )}
-            {!gitError && !gitAnalysis && <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>}
-            {!gitError && gitAnalysis && !gitAnalysis.isGitRepository && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Not applicable — not a Git repository.</p>
-            )}
-            {!gitError && gitAnalysis?.isGitRepository && <ChurnHotspotsChart churn={gitAnalysis.fileChurn} />}
-          </div>
-        </div>
-      </section>
-
-      <DependenciesSection dependencies={dependencies} dependenciesError={dependenciesError} />
-
-      <GitActivitySection gitAnalysis={gitAnalysis} gitError={gitError} />
-
-      <p className="mt-6 text-xs text-slate-400">
-        Last scanned {new Date(parsed.indexedAt).toLocaleString()}
+      <p className="mt-6 text-xs text-slate-400 dark:text-slate-500">
+        Last scanned{" "}
+        <time dateTime={parsed.indexedAt} title={new Date(parsed.indexedAt).toLocaleString()}>
+          {new Date(parsed.indexedAt).toLocaleString()}
+        </time>{" "}
+        ({timeAgo(parsed.indexedAt)})
       </p>
     </div>
   );
@@ -576,51 +694,49 @@ function DependenciesSection({
   dependenciesError: string | null;
 }) {
   return (
-    <section className="mt-6">
-      <h2 className="text-sm font-semibold text-slate-900">Dependencies</h2>
+    <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-800">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Dependencies</h3>
 
-      {dependenciesError && <p className="mt-2 text-sm text-red-600">{dependenciesError}</p>}
+      {dependenciesError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{dependenciesError}</p>}
 
-      {!dependenciesError && !dependencies && <p className="mt-2 text-sm text-slate-500">Loading…</p>}
+      {!dependenciesError && !dependencies && <Skeleton className="mt-2 h-10" />}
 
       {!dependenciesError && dependencies && dependencies.ecosystem === null && (
-        <p className="mt-2 text-sm text-slate-500">{dependencies.duplicatesNote}</p>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{dependencies.duplicatesNote}</p>
       )}
 
       {!dependenciesError && dependencies && dependencies.ecosystem !== null && (
         <div className="mt-2">
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-slate-700 dark:text-slate-200">
             {dependencies.totalDirect} direct {dependencies.ecosystem} dependenc
             {dependencies.totalDirect === 1 ? "y" : "ies"}
           </p>
 
           {dependencies.duplicates.length > 0 ? (
             <div className="mt-3">
-              <h3 className="text-xs font-medium text-slate-500">
+              <h4 className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Duplicate versions ({dependencies.duplicates.length})
-              </h3>
-              <ul className="mt-1 space-y-1 text-sm text-slate-700">
+              </h4>
+              <ul className="mt-1 space-y-1 text-sm text-slate-700 dark:text-slate-200">
                 {dependencies.duplicates.slice(0, 10).map((dup) => (
                   <li key={dup.name} className="flex justify-between gap-2">
                     <span className="truncate font-mono text-xs">{dup.name}</span>
-                    <span className="text-slate-500">{dup.versions.join(", ")}</span>
+                    <span className="text-slate-500 dark:text-slate-400">{dup.versions.join(", ")}</span>
                   </li>
                 ))}
               </ul>
               {dependencies.duplicates.length > 10 && (
-                <p className="mt-1 text-xs text-slate-400">
-                  +{dependencies.duplicates.length - 10} more
-                </p>
+                <p className="mt-1 text-xs text-slate-400">+{dependencies.duplicates.length - 10} more</p>
               )}
             </div>
           ) : (
             dependencies.duplicatesNote && (
-              <p className="mt-2 text-xs text-slate-400">{dependencies.duplicatesNote}</p>
+              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{dependencies.duplicatesNote}</p>
             )
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -631,84 +747,66 @@ function GitActivitySection({
   gitAnalysis: GitAnalysisResult | null;
   gitError: string | null;
 }) {
+  if (gitError) return <p className="text-sm text-red-600 dark:text-red-400">{gitError}</p>;
+
+  if (!gitAnalysis) return <Skeleton className="h-24" />;
+
+  if (!gitAnalysis.isGitRepository) {
+    return <p className="text-sm text-slate-500 dark:text-slate-400">Not a Git repository.</p>;
+  }
+
   return (
-    <section className="mt-6">
-      <h2 className="text-sm font-semibold text-slate-900">Git activity</h2>
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div>
+        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Recent commits</h3>
+        {gitAnalysis.recentCommits.length === 0 ? (
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No commits yet.</p>
+        ) : (
+          <ul className="mt-2 space-y-2 text-sm text-slate-700 dark:text-slate-200">
+            {gitAnalysis.recentCommits.map((commit) => (
+              <li key={commit.hash} className="flex items-baseline justify-between gap-2">
+                <span className="truncate">{commit.message}</span>
+                <span className="shrink-0 font-mono text-xs text-slate-400 dark:text-slate-500">
+                  {commit.shortHash}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-      {gitError && <p className="mt-2 text-sm text-red-600">{gitError}</p>}
+      <div>
+        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          Most-churned files (last {gitAnalysis.churnWindowDays} days)
+        </h3>
+        {gitAnalysis.fileChurn.length === 0 ? (
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No churn in this window.</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+            {gitAnalysis.fileChurn.map((entry) => (
+              <li key={entry.path} className="flex justify-between gap-2">
+                <span className="truncate font-mono text-xs">{entry.path}</span>
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">{entry.commitCount} commits</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-      {!gitError && !gitAnalysis && (
-        <p className="mt-2 text-sm text-slate-500">Loading…</p>
-      )}
-
-      {!gitError && gitAnalysis && !gitAnalysis.isGitRepository && (
-        <p className="mt-2 text-sm text-slate-500">Not a Git repository.</p>
-      )}
-
-      {!gitError && gitAnalysis && gitAnalysis.isGitRepository && (
-        <div className="mt-2 grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <div>
-            <h3 className="text-xs font-medium text-slate-500">Recent commits</h3>
-            {gitAnalysis.recentCommits.length === 0 ? (
-              <p className="mt-1 text-sm text-slate-500">No commits yet.</p>
-            ) : (
-              <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                {gitAnalysis.recentCommits.map((commit) => (
-                  <li key={commit.hash} className="flex items-baseline justify-between gap-2">
-                    <span className="truncate">{commit.message}</span>
-                    <span className="shrink-0 font-mono text-xs text-slate-400">
-                      {commit.shortHash}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <h3 className="text-xs font-medium text-slate-500">
-              Most-churned files (last {gitAnalysis.churnWindowDays} days)
-            </h3>
-            {gitAnalysis.fileChurn.length === 0 ? (
-              <p className="mt-1 text-sm text-slate-500">No churn in this window.</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                {gitAnalysis.fileChurn.map((entry) => (
-                  <li key={entry.path} className="flex justify-between">
-                    <span className="truncate font-mono text-xs">{entry.path}</span>
-                    <span className="text-slate-500">{entry.commitCount} commits</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {gitAnalysis.uncommittedChanges && (
-            <div className="sm:col-span-2">
-              <h3 className="text-xs font-medium text-slate-500">Uncommitted changes</h3>
-              {gitAnalysis.uncommittedChanges.filesChanged === 0 ? (
-                <p className="mt-1 text-sm text-slate-500">Working tree matches HEAD.</p>
-              ) : (
-                <p className="mt-1 text-sm text-slate-700">
-                  {gitAnalysis.uncommittedChanges.filesChanged} file
-                  {gitAnalysis.uncommittedChanges.filesChanged === 1 ? "" : "s"} changed, +
-                  {gitAnalysis.uncommittedChanges.insertions} / -
-                  {gitAnalysis.uncommittedChanges.deletions}
-                </p>
-              )}
-            </div>
+      {gitAnalysis.uncommittedChanges && (
+        <div className="sm:col-span-2">
+          <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Uncommitted changes</h3>
+          {gitAnalysis.uncommittedChanges.filesChanged === 0 ? (
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Working tree matches HEAD.</p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {gitAnalysis.uncommittedChanges.filesChanged} file
+              {gitAnalysis.uncommittedChanges.filesChanged === 1 ? "" : "s"} changed, +
+              {gitAnalysis.uncommittedChanges.insertions} / -{gitAnalysis.uncommittedChanges.deletions}
+            </p>
           )}
         </div>
       )}
-    </section>
-  );
-}
-
-function StatTile({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-xl font-semibold text-slate-900">{value}</div>
     </div>
   );
 }

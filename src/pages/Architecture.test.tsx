@@ -102,4 +102,60 @@ describe("ArchitecturePage", () => {
 
     expect(mockedApi.getArchitecture).toHaveBeenCalledWith("p1", 3);
   });
+  describe("module table controls", () => {
+    const VIEW = {
+      depth: 2,
+      nodes: [
+        { id: "src/alpha", fileCount: 2, testFileCount: 1, totalLoc: 30, languages: ["TypeScript"] },
+        { id: "src/beta", fileCount: 9, testFileCount: 0, totalLoc: 10, languages: ["TypeScript"] },
+        { id: "src/gamma", fileCount: 5, testFileCount: 2, totalLoc: 99, languages: ["TypeScript"] },
+      ],
+      edges: [],
+      externalDependencies: [],
+      generatedAt: "now",
+      empty: false,
+    };
+
+    function moduleOrder() {
+      return screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent);
+    }
+
+    beforeEach(() => {
+      mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+      mockedApi.getArchitecture.mockResolvedValue(VIEW);
+      window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+    });
+
+    it("filters modules by name and reports when nothing matches", async () => {
+      renderPage();
+      await screen.findByText("src/alpha");
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText("Filter modules"), "bet");
+      expect(moduleOrder()).toEqual(["src/beta"]);
+
+      await user.clear(screen.getByLabelText("Filter modules"));
+      await user.type(screen.getByLabelText("Filter modules"), "zzz");
+      expect(screen.getByText(/No modules match/)).toBeInTheDocument();
+    });
+
+    it("sorts by a column, flips direction, then returns to the original order", async () => {
+      renderPage();
+      await screen.findByText("src/alpha");
+      const user = userEvent.setup();
+      expect(moduleOrder()).toEqual(["src/alpha", "src/beta", "src/gamma"]);
+
+      await user.click(screen.getByRole("button", { name: "LOC" }));
+      expect(moduleOrder()).toEqual(["src/gamma", "src/alpha", "src/beta"]); // desc first for numbers
+
+      await user.click(screen.getByRole("button", { name: "LOC" }));
+      expect(moduleOrder()).toEqual(["src/beta", "src/alpha", "src/gamma"]); // asc
+
+      await user.click(screen.getByRole("button", { name: "LOC" }));
+      expect(moduleOrder()).toEqual(["src/alpha", "src/beta", "src/gamma"]); // back to server order
+    });
+  });
 });

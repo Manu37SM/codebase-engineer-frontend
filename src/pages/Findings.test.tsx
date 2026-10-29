@@ -191,6 +191,51 @@ describe("FindingsPage", () => {
     expect(screen.getByText("1 findings")).toBeInTheDocument();
   });
 
+  it("filters the loaded findings by a free-text search across rule, file and text", async () => {
+    const make = (id: string, rule: string, file: string, evidence: string) => ({
+      id,
+      project_id: "p1",
+      rule_id: rule,
+      severity: "medium",
+      category: "maintainability",
+      file_path: file,
+      line_start: 1,
+      line_end: 2,
+      evidence,
+      explanation: null,
+      recommendation: null,
+      source: "deterministic",
+      created_at: "now",
+    });
+    mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
+    mockedApi.listFindings.mockResolvedValue({
+      findings: [
+        make("f1", "large-file", "src/big.ts", "File has 900 lines"),
+        make("f2", "hardcoded-secret", "src/config.ts", "Looks like an API key"),
+      ],
+      total: 2,
+      latestRun: RUN,
+    });
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+
+    renderPage();
+    await screen.findByText("File has 900 lines");
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Search findings"), "SECRET");
+    expect(screen.queryByText("File has 900 lines")).not.toBeInTheDocument();
+    expect(screen.getByText("Looks like an API key")).toBeInTheDocument();
+    expect(screen.getByText(/1 match for "SECRET"/)).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search findings"));
+    await user.type(screen.getByLabelText("Search findings"), "nothing-like-this");
+    expect(screen.getByText(/No findings match "nothing-like-this"/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.getByText("File has 900 lines")).toBeInTheDocument();
+    expect(screen.getByText("Looks like an API key")).toBeInTheDocument();
+  });
+
   it("runs analysis and reloads findings when the button is clicked", async () => {
     mockedApi.listProjects.mockResolvedValue({ projects: [PROJECT] });
     mockedApi.listFindings.mockResolvedValue({ findings: [], total: 0, latestRun: null });

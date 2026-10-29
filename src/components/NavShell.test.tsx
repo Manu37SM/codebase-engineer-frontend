@@ -81,3 +81,49 @@ describe("NavShell sidebar collapse (Task #88)", () => {
     expect(window.localStorage.getItem("codebase-engineer.sidebarCollapsed")).toBe("0");
   });
 });
+
+describe("NavShell repository switcher and mobile drawer", () => {
+  const P1 = { id: "p1", name: "alpha-app", root_path: "/a", created_at: "now", apply_mode: "direct" };
+  const P2 = { id: "p2", name: "beta-app", root_path: "/b", created_at: "now", apply_mode: "direct" };
+
+  beforeEach(() => {
+    mockedApi.listProjects.mockReset().mockResolvedValue({ projects: [P1, P2] });
+    mockedApi.getCurrentUser.mockReset().mockResolvedValue({ authRequired: false, user: null });
+    window.localStorage.clear();
+    window.localStorage.setItem("codebase-engineer.selectedProjectId", "p1");
+  });
+
+  it("switches the active repository from the sidebar and remembers it", async () => {
+    renderShell();
+    const select = await screen.findByRole("combobox", { name: "Active repository" });
+    expect(select).toHaveValue("p1");
+
+    const user = userEvent.setup();
+    await user.selectOptions(select, "p2");
+
+    expect(window.localStorage.getItem("codebase-engineer.selectedProjectId")).toBe("p2");
+    expect(select).toHaveValue("p2");
+  });
+
+  it("hides the repository switcher when no repository is registered", async () => {
+    mockedApi.listProjects.mockResolvedValue({ projects: [] });
+    renderShell();
+    await screen.findByRole("navigation", { name: "Primary" });
+    expect(screen.queryByRole("combobox", { name: "Active repository" })).not.toBeInTheDocument();
+  });
+
+  it("opens the mobile menu, shows labels even if the sidebar is collapsed, and closes on Escape", async () => {
+    window.localStorage.setItem("codebase-engineer.sidebarCollapsed", "1");
+    renderShell();
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    expect(within(nav).queryByText("Repositories")).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
+    expect(within(nav).getByText("Repositories")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close menu" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(within(nav).queryByText("Repositories")).not.toBeInTheDocument();
+  });
+});

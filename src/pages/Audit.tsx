@@ -1,15 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useProjects } from "../context/ProjectContext";
 import { getAudit, getAuditExportUrl } from "../lib/api";
-import type { AuditReport, Severity } from "../lib/types";
-
-const SEVERITY_STYLES: Record<Severity, string> = {
-  critical: "bg-red-100 text-red-800",
-  high: "bg-orange-100 text-orange-800",
-  medium: "bg-amber-100 text-amber-800",
-  low: "bg-slate-100 text-slate-700",
-};
+import type { AuditReport } from "../lib/types";
+import { buildAuditSummary } from "../lib/auditSummary";
+import { SEVERITY_ORDER, computeHealthFromCounts, timeAgo, toSeverityCounts } from "../lib/health";
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  Card,
+  CopyButton,
+  Icon,
+  NoProjectState,
+  PageHeader,
+  PageSkeleton,
+  SeverityBadge,
+  StatCard,
+} from "../components/ui";
 
 export default function AuditPage() {
   const { selectedProject } = useProjects();
@@ -40,44 +47,47 @@ export default function AuditPage() {
     };
   }, [selectedProject]);
 
-  if (!selectedProject) {
-    return (
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">Audit</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-500">
-          No repository selected yet. Go to{" "}
-          <Link to="/repositories" className="underline">
-            Repositories
-          </Link>{" "}
-          to register and scan one.
-        </p>
-      </div>
-    );
-  }
+  const summary = useMemo(() => (report ? buildAuditSummary(report) : ""), [report]);
+
+  if (!selectedProject) return <NoProjectState page="Audit" />;
+
+  const counts = report ? toSeverityCounts(report.findings.counts.bySeverity) : null;
+  const health = counts && report?.findings.latestRun ? computeHealthFromCounts(counts) : null;
+  const testRun = report?.latestTestRun ?? null;
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900">Audit</h1>
-        {report && (
-          <a
-            href={getAuditExportUrl(selectedProject.id)}
-            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-          >
-            Download report (.md)
-          </a>
-        )}
-      </div>
+      <PageHeader
+        title="Audit"
+        subtitle={report ? `${report.project.name} — generated ${timeAgo(report.generatedAt)}` : undefined}
+        actions={
+          report && (
+            <div className="flex flex-wrap items-center gap-2" data-no-print>
+              <CopyButton text={summary} label="Copy summary" ariaLabel="Copy audit summary as Markdown" />
+              <button type="button" onClick={() => window.print()} className={BTN_SECONDARY}>
+                Print
+              </button>
+              <a href={getAuditExportUrl(selectedProject.id)} className={BTN_PRIMARY}>
+                <Icon name="download" className="h-3.5 w-3.5" />
+                Download report (.md)
+              </a>
+            </div>
+          )
+        }
+      />
 
-      {loading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {loading && <PageSkeleton label="Loading audit report" />}
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
 
       {!loading && !error && report && (
-        <div className="mt-4 space-y-6">
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">Repository snapshot</h2>
+        <div className="mt-4 space-y-4">
+          <Card title="Repository snapshot">
             {!report.snapshot ? (
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 This repository hasn't been scanned yet. Go to{" "}
                 <Link to="/repositories" className="underline">
                   Repositories
@@ -85,109 +95,124 @@ export default function AuditPage() {
                 and click Scan.
               </p>
             ) : (
-              <dl className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-700 sm:grid-cols-4">
-                <StatTile label="Total files" value={report.snapshot.totalFiles} />
-                <StatTile label="Test files" value={report.snapshot.testFiles} />
-                <StatTile label="Build system" value={report.snapshot.buildSystems.join(", ") || "—"} />
-                <StatTile label="Frameworks" value={report.snapshot.frameworks.join(", ") || "—"} />
+              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <StatCard label="Total files" value={report.snapshot.totalFiles} />
+                <StatCard label="Test files" value={report.snapshot.testFiles} />
+                <StatCard label="Build system" value={report.snapshot.buildSystems.join(", ") || "—"} />
+                <StatCard label="Frameworks" value={report.snapshot.frameworks.join(", ") || "—"} />
+                <StatCard
+                  label="Health"
+                  value={health ? `${health.score} · ${health.grade}` : "—"}
+                  tone={health ? (health.score >= 75 ? "good" : health.score >= 60 ? "warn" : "bad") : "default"}
+                  hint={health ? "see Findings for detail" : "run analysis first"}
+                />
               </dl>
             )}
-          </section>
+          </Card>
 
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">Static analysis findings</h2>
-            {!report.findings.latestRun ? (
-              <p className="mt-1 text-sm text-slate-500">
-                Analysis hasn't been run yet. Go to{" "}
-                <Link to="/findings" className="underline">
-                  Findings
-                </Link>{" "}
-                and click "Run Analysis".
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-700">
-                {report.findings.counts.total} findings from the last analysis run —{" "}
-                {formatCounts(report.findings.counts.bySeverity)}
-              </p>
-            )}
-          </section>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Static analysis findings">
+              {!report.findings.latestRun ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Analysis hasn't been run yet. Go to{" "}
+                  <Link to="/findings" className="underline">
+                    Findings
+                  </Link>{" "}
+                  and click "Run Analysis".
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    {report.findings.counts.total} findings from the last analysis run —{" "}
+                    {formatCounts(report.findings.counts.bySeverity)}
+                  </p>
+                  {counts && report.findings.counts.total > 0 && (
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {SEVERITY_ORDER.filter((sev) => counts[sev] > 0).map((sev) => (
+                        <li key={sev} className="flex items-center gap-1.5 text-sm tabular-nums text-slate-600 dark:text-slate-300">
+                          <SeverityBadge severity={sev} /> ×{counts[sev]}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </Card>
 
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">
-              Security scan (live, {report.security.findings.length} finding
-              {report.security.findings.length === 1 ? "" : "s"})
-            </h2>
+            <Card title="Tests">
+              {!testRun ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No test run recorded yet. Go to{" "}
+                  <Link to="/tests" className="underline">
+                    Tests
+                  </Link>{" "}
+                  to run them.
+                </p>
+              ) : (
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  {testRun.status} — {testRun.passed} passed, {testRun.failed} failed, {testRun.skipped} skipped
+                </p>
+              )}
+            </Card>
+          </div>
+
+          <Card
+            title={`Security scan (live, ${report.security.findings.length} finding${
+              report.security.findings.length === 1 ? "" : "s"
+            })`}
+          >
             {report.security.findings.length === 0 ? (
-              <p className="mt-1 text-sm text-slate-500">No security findings.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">No security findings.</p>
             ) : (
-              <ul className="mt-2 space-y-2">
+              <ul className="space-y-2">
                 {report.security.findings.map((f, i) => (
-                  <li key={`${f.ruleId}-${f.filePath}-${i}`} className="rounded border border-slate-200 bg-white p-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs font-medium uppercase ${SEVERITY_STYLES[f.severity]}`}
-                      >
-                        {f.severity}
-                      </span>
-                      <span className="font-mono text-xs text-slate-700">
+                  <li
+                    key={`${f.ruleId}-${f.filePath}-${i}`}
+                    className="rounded-md border border-slate-200 p-3 dark:border-slate-700/70"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SeverityBadge severity={f.severity} />
+                      <span className="font-mono text-xs text-slate-700 dark:text-slate-200">
                         {f.filePath}
                         {f.lineStart ? `:${f.lineStart}` : ""}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">{f.explanation}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{f.explanation}</p>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Card>
 
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">Dependencies</h2>
-            {report.dependencies.ecosystem === null ? (
-              <p className="mt-1 text-sm text-slate-500">{report.dependencies.duplicatesNote}</p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-700">
-                {report.dependencies.totalDirect} direct {report.dependencies.ecosystem} dependencies,{" "}
-                {report.dependencies.duplicates.length} duplicate version group
-                {report.dependencies.duplicates.length === 1 ? "" : "s"}
-              </p>
-            )}
-          </section>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Dependencies">
+              {report.dependencies.ecosystem === null ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">{report.dependencies.duplicatesNote}</p>
+              ) : (
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  {report.dependencies.totalDirect} direct {report.dependencies.ecosystem} dependencies,{" "}
+                  {report.dependencies.duplicates.length} duplicate version group
+                  {report.dependencies.duplicates.length === 1 ? "" : "s"}
+                </p>
+              )}
+            </Card>
 
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">Git activity</h2>
-            {!report.git.isGitRepository ? (
-              <p className="mt-1 text-sm text-slate-500">Not a Git repository.</p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-700">
-                Branch {report.git.branch ?? "—"} · {report.git.recentCommits.length} recent commit
-                {report.git.recentCommits.length === 1 ? "" : "s"}
-                {report.git.uncommittedChanges && report.git.uncommittedChanges.filesChanged > 0 && (
-                  <> · {report.git.uncommittedChanges.filesChanged} uncommitted file change(s)</>
-                )}
-              </p>
-            )}
-          </section>
+            <Card title="Git activity">
+              {!report.git.isGitRepository ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Not a Git repository.</p>
+              ) : (
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  Branch {report.git.branch ?? "—"} · {report.git.recentCommits.length} recent commit
+                  {report.git.recentCommits.length === 1 ? "" : "s"}
+                  {report.git.uncommittedChanges && report.git.uncommittedChanges.filesChanged > 0 && (
+                    <> · {report.git.uncommittedChanges.filesChanged} uncommitted file change(s)</>
+                  )}
+                </p>
+              )}
+            </Card>
+          </div>
 
-          <section>
-            <h2 className="text-sm font-semibold text-slate-900">Tests</h2>
-            {!report.latestTestRun ? (
-              <p className="mt-1 text-sm text-slate-500">
-                No test run recorded yet. Go to{" "}
-                <Link to="/tests" className="underline">
-                  Tests
-                </Link>{" "}
-                to run them.
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-700">
-                {report.latestTestRun.status} — {report.latestTestRun.passed} passed,{" "}
-                {report.latestTestRun.failed} failed, {report.latestTestRun.skipped} skipped
-              </p>
-            )}
-          </section>
-
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-400 dark:text-slate-500">
             Generated {new Date(report.generatedAt).toLocaleString()}
           </p>
         </div>
@@ -200,13 +225,4 @@ function formatCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
   if (entries.length === 0) return "none";
   return entries.map(([key, value]) => `${value} ${key}`).join(", ");
-}
-
-function StatTile({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-slate-900">{value}</div>
-    </div>
-  );
 }

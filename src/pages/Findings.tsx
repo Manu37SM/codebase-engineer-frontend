@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "../context/ProjectContext";
 import ActivityIndicator from "../components/ActivityIndicator";
 import {
@@ -36,6 +35,7 @@ import {
   writeAndRunGeneratedTest,
 } from "../lib/api";
 import BulkAiFixButton from "../components/BulkAiFixButton";
+import { Icon, NoProjectState, SEVERITY_BADGE, Skeleton } from "../components/ui";
 import { downloadFindingsCsv, downloadFindingsJson } from "../lib/exportFindings";
 import type {
   ContextBundle,
@@ -49,12 +49,7 @@ import type {
   StoredRootCauseAnalysis,
 } from "../lib/types";
 
-const SEVERITY_STYLES: Record<Severity, string> = {
-  critical: "bg-red-100 text-red-800",
-  high: "bg-orange-100 text-orange-800",
-  medium: "bg-amber-100 text-amber-800",
-  low: "bg-slate-100 text-slate-700",
-};
+const SEVERITY_STYLES: Record<Severity, string> = SEVERITY_BADGE;
 
 const SEVERITY_OPTIONS: Severity[] = ["critical", "high", "medium", "low"];
 const CATEGORY_OPTIONS = ["maintainability", "testing", "security", "documentation", "dependencies"];
@@ -115,6 +110,8 @@ export default function FindingsPage() {
 
   const [tier, setTier] = useState<"free" | "pro" | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  // Client-side text filter over the already-loaded findings (rule, file, evidence, explanation).
+  const [query, setQuery] = useState("");
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -600,20 +597,17 @@ export default function FindingsPage() {
     }
   }
 
-  if (!selectedProject) {
-    return (
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">Findings</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-500">
-          No repository selected yet. Go to{" "}
-          <Link to="/repositories" className="underline">
-            Repositories
-          </Link>{" "}
-          to register and scan one.
-        </p>
-      </div>
+  const visibleFindings = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return findings;
+    return findings.filter((f) =>
+      [f.rule_id, f.file_path, f.evidence, f.explanation, f.recommendation, f.category]
+        .filter(Boolean)
+        .some((field) => (field as string).toLowerCase().includes(q))
     );
-  }
+  }, [findings, query]);
+
+  if (!selectedProject) return <NoProjectState page="Findings" />;
 
   return (
     <div>
@@ -701,10 +695,36 @@ export default function FindingsPage() {
             </option>
           ))}
         </select>
+        <div className="relative">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            aria-label="Search findings"
+            placeholder="Search rule, file, text…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-56 rounded border border-slate-300 py-1 pl-7 pr-2 dark:border-slate-700"
+          />
+        </div>
         {!loading && <span className="text-slate-500">{total} findings</span>}
+        {!loading && query.trim() && (
+          <span className="text-slate-500 dark:text-slate-400">
+            · {visibleFindings.length} match{visibleFindings.length === 1 ? "" : "es"} for "{query.trim()}"
+          </span>
+        )}
       </div>
 
-      {loading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
+      {loading && (
+        <div role="status" aria-live="polite" className="mt-4 space-y-2">
+          <span className="sr-only">Loading…</span>
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      )}
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
       {!loading && !error && !hasRun && (
@@ -717,9 +737,18 @@ export default function FindingsPage() {
         <p className="mt-4 text-sm text-slate-500">No findings match the current filters.</p>
       )}
 
-      {!loading && !error && findings.length > 0 && (
+      {!loading && !error && findings.length > 0 && visibleFindings.length === 0 && (
+        <p className="mt-4 text-sm text-slate-500">
+          No findings match "{query.trim()}".{" "}
+          <button type="button" onClick={() => setQuery("")} className="underline">
+            Clear search
+          </button>
+        </p>
+      )}
+
+      {!loading && !error && visibleFindings.length > 0 && (
         <ul className="mt-4 space-y-2">
-          {findings.map((finding) => (
+          {visibleFindings.map((finding) => (
             <li key={finding.id} className="rounded border border-slate-200 bg-white p-3">
               <div className="flex items-center gap-2">
                 <span

@@ -24,6 +24,24 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"] as const;
 
+// Neutral values that read well on both the dark theme (the app default) and light surfaces.
+const GRID_STROKE = "rgba(148, 163, 184, 0.25)";
+const TICK_FILL = "#94a3b8";
+const AXIS_TICK = { fontSize: 11, fill: TICK_FILL };
+const TOOLTIP_PROPS = {
+  contentStyle: {
+    backgroundColor: "#0f172a",
+    border: "1px solid #334155",
+    borderRadius: 8,
+    fontSize: 12,
+    color: "#e2e8f0",
+    boxShadow: "0 8px 24px rgba(2, 6, 23, 0.4)",
+  },
+  labelStyle: { color: "#cbd5e1", fontWeight: 600 },
+  itemStyle: { color: "#e2e8f0" },
+  cursor: { fill: "rgba(148, 163, 184, 0.1)" },
+} as const;
+
 export function SeverityBreakdownChart({ findings }: { findings: FindingRecord[] }) {
   const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of findings) {
@@ -46,6 +64,8 @@ export function SeverityBreakdownChart({ findings }: { findings: FindingRecord[]
             nameKey="severity"
             innerRadius={35}
             outerRadius={70}
+            stroke="none"
+            paddingAngle={2}
           >
             {data
               .filter((d) => d.count > 0)
@@ -53,7 +73,7 @@ export function SeverityBreakdownChart({ findings }: { findings: FindingRecord[]
                 <Cell key={d.severity} fill={SEVERITY_COLORS[d.severity]} />
               ))}
           </Pie>
-          <Tooltip />
+          <Tooltip {...TOOLTIP_PROPS} />
         </PieChart>
       </ResponsiveContainer>
       <ul className="space-y-1 text-sm">
@@ -105,13 +125,14 @@ export function FindingsTrendChart({ runs }: { runs: AnalysisRun[] }) {
     <div>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+          <XAxis dataKey="label" tick={AXIS_TICK} />
+          <YAxis allowDecimals={false} tick={AXIS_TICK} />
           <Tooltip
+            {...TOOLTIP_PROPS}
             labelFormatter={(label, payload) => (payload?.[0]?.payload?.date ? `${label} — ${payload[0].payload.date}` : label)}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: TICK_FILL }} />
           {SEVERITY_ORDER.map((severity) => (
             <Line
               key={severity}
@@ -147,11 +168,11 @@ export function LanguageBreakdownChart({ languages }: { languages: LanguageStat[
   return (
     <ResponsiveContainer width="100%" height={Math.max(120, data.length * 28)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-        <YAxis type="category" dataKey="language" width={80} tick={{ fontSize: 11 }} />
-        <Tooltip />
-        <Bar dataKey="files" fill="#0f172a" radius={[0, 3, 3, 0]} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
+        <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} />
+        <YAxis type="category" dataKey="language" width={80} tick={AXIS_TICK} />
+        <Tooltip {...TOOLTIP_PROPS} />
+        <Bar dataKey="files" fill="#38bdf8" radius={[0, 3, 3, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -170,11 +191,11 @@ export function ChurnHotspotsChart({ churn }: { churn: FileChurn[] }) {
   return (
     <ResponsiveContainer width="100%" height={Math.max(120, data.length * 28)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-        <YAxis type="category" dataKey="path" width={140} tick={{ fontSize: 10, fontFamily: "monospace" }} />
-        <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullPath ?? ""} />
-        <Bar dataKey="commits" fill="#334155" radius={[0, 3, 3, 0]} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
+        <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} />
+        <YAxis type="category" dataKey="path" width={140} tick={{ fontSize: 10, fontFamily: "monospace", fill: TICK_FILL }} />
+        <Tooltip {...TOOLTIP_PROPS} labelFormatter={(_, payload) => payload?.[0]?.payload?.fullPath ?? ""} />
+        <Bar dataKey="commits" fill="#818cf8" radius={[0, 3, 3, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
